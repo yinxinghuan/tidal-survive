@@ -2,10 +2,19 @@ import { RoundedBox } from '@react-three/drei';
 import { COLORS } from '../constants';
 import type { ItemKind } from '../types';
 
-export function ItemMesh({ kind }: { kind: ItemKind }) {
+export function ItemMesh({ kind, highlight = false }: { kind: ItemKind; highlight?: boolean }) {
+  // Optional gold pulse ring around tutorial-spawned items so the player's eye
+  // finds them. The ring scales subtly via CSS-like sine.
+  const _highlightRing = highlight ? (
+    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.45, 0]}>
+      <ringGeometry args={[0.75, 0.95, 32]} />
+      <meshBasicMaterial color="#ffe17a" transparent opacity={0.65} />
+    </mesh>
+  ) : null;
   if (kind === 'plank') {
     return (
       <group>
+        {_highlightRing}
         <RoundedBox args={[1.6, 0.18, 0.42]} radius={0.05} smoothness={3} castShadow>
           <meshStandardMaterial color={COLORS.plank} roughness={0.85} />
         </RoundedBox>
@@ -22,6 +31,7 @@ export function ItemMesh({ kind }: { kind: ItemKind }) {
   if (kind === 'boulder') {
     return (
       <group>
+        {_highlightRing}
         <mesh castShadow>
           <dodecahedronGeometry args={[0.55, 0]} />
           <meshStandardMaterial color={COLORS.boulder} roughness={0.95} flatShading />
@@ -36,6 +46,7 @@ export function ItemMesh({ kind }: { kind: ItemKind }) {
   // Paddle
   return (
     <group rotation={[0.6, 0, 0]}>
+      {_highlightRing}
       <mesh castShadow position={[0, 0.45, 0]}>
         <cylinderGeometry args={[0.07, 0.07, 1.1, 12]} />
         <meshStandardMaterial color={COLORS.paddle} roughness={0.75} />

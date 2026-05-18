@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
-import { CAMERA_FOV, CAMERA_POS_BASE, PLAYFIELD, GRID, COLORS } from '../constants';
+import { CAMERA_FOV, CAMERA_POS_BASE, PLAYFIELD, GRID, COLORS, WATER_BASE_Y, WATER_Y_PER_LEVEL } from '../constants';
 import { Sailor } from './Sailor';
 import { Shark } from './Shark';
 import { ItemMesh } from './ItemMesh';
@@ -23,8 +23,7 @@ interface SceneProps {
   haptic?: (k: 'light' | 'heavy') => void;
 }
 
-// Camera that follows the player. Like Penguin Rescue but pulls back slightly
-// as the player gains height so the whole island stays visible.
+// FollowCamera reads state.current.shakeX/Y/Z + tideDipPhase each frame.
 function FollowCamera({ state }: { state: React.MutableRefObject<GameRef> }) {
   const { camera, size } = useThree();
   const offset = useRef(new THREE.Vector3(...CAMERA_POS_BASE));
@@ -43,17 +42,108 @@ function FollowCamera({ state }: { state: React.MutableRefObject<GameRef> }) {
   useFrame(() => {
     const d = state.current;
     const head = d.playerPos;
-    // Zoom out a bit if player is high
     const zoomBoost = Math.min(d.maxHeightReached * 0.3, 3);
-    offset.current.set(CAMERA_POS_BASE[0], CAMERA_POS_BASE[1] + zoomBoost, CAMERA_POS_BASE[2] + zoomBoost * 0.4);
+    // Tide dip: 0.9s arc, dips down then rebounds
+    let dipY = 0;
+    if (d.tideDipPhase > 0) {
+      const p = d.tideDipPhase / 0.9; // 0..1
+      // dip down for first half, overshoot up for second, settle
+      dipY = -Math.sin(p * Math.PI) * d.tideDipMag;
+    }
+    offset.current.set(CAMERA_POS_BASE[0], CAMERA_POS_BASE[1] + zoomBoost + dipY, CAMERA_POS_BASE[2] + zoomBoost * 0.4);
     target.current.copy(head).add(offset.current);
     camera.position.lerp(target.current, 0.08);
+    // Apply additive shake on top of the lerped position
+    const sx = (Math.random() - 0.5) * d.shakeX;
+    const sy = (Math.random() - 0.5) * d.shakeY;
+    const sz = (Math.random() - 0.5) * d.shakeZ;
+    camera.position.x += sx;
+    camera.position.y += sy;
+    camera.position.z += sz;
     camera.lookAt(head.x, 0, head.z);
   });
   return null;
 }
 
-// Syncs the player + shark transforms from state-refs every frame.
+// Animated ring drawn in-world for dust / splash / tide events.
+function Ring({ ring, stateRef }: {
+  ring: { id: number; kind: 'dust' | 'splash' | 'tide'; worldX: number; worldY: number; worldZ: number; startTime: number };
+  stateRef: React.MutableRefObject<GameRef>;
+}) {
+  const groupRef = useRef<THREE.Group>(null);
+  const matRef = useRef<THREE.MeshBasicMaterial>(null);
+  useFrame(() => {
+    if (!groupRef.current || !matRef.current) return;
+    const d = stateRef.current;
+    const age = d.time - ring.startTime;
+    const life = ring.kind === 'tide' ? 1.1 : ring.kind === 'splash' ? 0.7 : 0.55;
+    const p = Math.min(1, age / life);
+    const maxScale = ring.kind === 'tide' ? 32 : ring.kind === 'splash' ? 4 : 2.6;
+    const s = 0.4 + p * maxScale;
+    groupRef.current.scale.setScalar(s);
+    matRef.current.opacity = (1 - p) * (ring.kind === 'tide' ? 0.55 : ring.kind === 'splash' ? 0.7 : 0.85);
+  });
+  const color = ring.kind === 'dust' ? '#d6c69b' : ring.kind === 'splash' ? '#cfe6f3' : '#ffffff';
+  return (
+    <group
+      ref={groupRef}
+      position={[ring.worldX, ring.worldY + 0.04, ring.worldZ]}
+      rotation={[-Math.PI / 2, 0, 0]}
+    >
+      <mesh>
+        <ringGeometry args={[0.42, 0.52, 32]} />
+        <meshBasicMaterial ref={matRef} color={color} transparent opacity={1} side={THREE.DoubleSide} />
+      </mesh>
+    </group>
+  );
+}
+
+function RingFX({ state }: { state: React.MutableRefObject<GameRef> }) {
+  const [, force] = useState(0);
+  const lastCount = useRef(-1);
+  useFrame(() => {
+    const len = state.current.dustRings.length;
+    if (len !== lastCount.current) {
+      lastCount.current = len;
+      force(x => x + 1);
+    }
+  });
+  return (
+    <>
+      {state.current.dustRings.map(r => (
+        <Ring key={r.id} ring={r} stateRef={state} />
+      ))}
+    </>
+  );
+}
+
+// Cone marker hovering over the tutorial drop-target tile
+function DropTargetMarker({ state }: { state: React.MutableRefObject<GameRef> }) {
+  const ref = useRef<THREE.Group>(null);
+  useFrame(({ clock }) => {
+    const d = state.current;
+    if (!ref.current) return;
+    if (!d.tutorialDropTarget) {
+      ref.current.visible = false;
+      return;
+    }
+    ref.current.visible = true;
+    const { col, row } = d.tutorialDropTarget;
+    const c = tileCenter(col, row);
+    const t = clock.getElapsedTime();
+    ref.current.position.set(c.x, 1.5 + Math.sin(t * 4) * 0.18, c.z);
+    ref.current.rotation.y = t * 1.5;
+  });
+  return (
+    <group ref={ref} visible={false}>
+      <mesh rotation={[Math.PI, 0, 0]} position={[0, 0, 0]}>
+        <coneGeometry args={[0.45, 0.9, 4]} />
+        <meshStandardMaterial color="#ffe17a" emissive="#ff9844" emissiveIntensity={0.9} transparent opacity={0.85} />
+      </mesh>
+    </group>
+  );
+}
+
 function ActorSync({ state, carryingRef }: {
   state: React.MutableRefObject<GameRef>;
   carryingRef: React.MutableRefObject<ItemKind | null>;
@@ -63,7 +153,6 @@ function ActorSync({ state, carryingRef }: {
   const lungingRefs = useRef<Map<number, React.MutableRefObject<boolean>>>(new Map());
   const itemRefs = useRef<Map<number, THREE.Group>>(new Map());
 
-  // Re-render when item counts change
   const [, force] = useState(0);
   const lastSizes = useRef({ items: -1 });
 
@@ -86,10 +175,8 @@ function ActorSync({ state, carryingRef }: {
       const g = itemRefs.current.get(it.id);
       if (g) g.position.copy(it.position);
     }
-    // Mirror carry state for the Sailor's held-item visual
     carryingRef.current = d.carrying;
 
-    // Force re-render on item count delta so newly spawned items appear
     if (d.items.length !== lastSizes.current.items) {
       lastSizes.current.items = d.items.length;
       force(x => x + 1);
@@ -100,7 +187,7 @@ function ActorSync({ state, carryingRef }: {
   return (
     <>
       <group ref={playerRef}>
-        <Sailor carryingRef={carryingRef} />
+        <Sailor carryingRef={carryingRef} stateRef={state} />
       </group>
       {d.sharks.map(s => {
         if (!lungingRefs.current.get(s.id)) {
@@ -120,14 +207,13 @@ function ActorSync({ state, carryingRef }: {
           if (el) itemRefs.current.set(it.id, el);
           else itemRefs.current.delete(it.id);
         }}>
-          <ItemMesh kind={it.kind} />
+          <ItemMesh kind={it.kind} highlight={d.tutorialItemId === it.id} />
         </group>
       ))}
     </>
   );
 }
 
-// Renders the 8x8 height grid. Re-renders only when any height changes.
 function GridTerrain({ state }: { state: React.MutableRefObject<GameRef> }) {
   const [, force] = useState(0);
   const lastSum = useRef(-1);
@@ -148,7 +234,14 @@ function GridTerrain({ state }: { state: React.MutableRefObject<GameRef> }) {
     for (let r = 0; r < GRID; r++) {
       const center = tileCenter(c, r);
       tiles.push(
-        <Tile key={`t_${c}_${r}`} col={c} row={r} height={d.heights[c][r]} x={center.x} z={center.z} />
+        <Tile
+          key={`t_${c}_${r}`}
+          col={c} row={r}
+          height={d.heights[c][r]}
+          growAt={d.lastGrowAt[c][r]}
+          stateRef={state}
+          x={center.x} z={center.z}
+        />
       );
     }
   }
@@ -184,9 +277,6 @@ export function Scene({
       />
       <hemisphereLight args={['#a9c8df', '#3b556e', 0.4]} />
 
-      {/* Distant deep-ocean ring beyond the camera fog. Sits well below the
-          water plane so the rising water always reads as the visible
-          surface. */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -3, 0]}>
         <planeGeometry args={[PLAYFIELD * 10, PLAYFIELD * 10]} />
         <meshStandardMaterial color={COLORS.waterDeep} roughness={0.9} />
@@ -196,6 +286,11 @@ export function Scene({
       <Water stateRef={state} />
       <Birds stateRef={state} />
       <ActorSync state={state} carryingRef={carryingRef} />
+      <RingFX state={state} />
+      <DropTargetMarker state={state} />
     </>
   );
 }
+
+// Re-export so TidalSurvive.tsx can use them for the screen-space HUD overlays
+export { WATER_BASE_Y, WATER_Y_PER_LEVEL };

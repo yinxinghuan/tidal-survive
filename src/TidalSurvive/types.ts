@@ -45,3 +45,27 @@ export interface Bird {
   height: number;
   speed: number;
 }
+
+// Floating "+1 PICK" / "+10 HEIGHT" pellet (screen-space, rendered in HUD)
+export interface Pellet {
+  id: number;
+  kind: 'pick' | 'height' | 'paddle';
+  text: string;
+  // World position to project to screen
+  worldX: number; worldZ: number; worldY: number;
+  startTime: number;
+}
+
+// Expanding dust/water ring at a tile center
+export interface DustRing {
+  id: number;
+  worldX: number; worldZ: number; worldY: number;
+  startTime: number;
+  kind: 'dust' | 'splash' | 'tide';
+}
+
+// Active tutorial step
+export type TutorialStep = 'move' | 'pickup' | 'drop' | 'tide' | 'done';
+
+// READY/GO start ritual phase
+export type StartRitual = 'idle' | 'ready' | 'go' | 'done';

@@ -8,9 +8,15 @@ type SfxKey =
   | 'plank_drop'    // drop plank
   | 'boulder_lift'  // pick up boulder
   | 'paddle'        // pick up paddle (tide buffer)
+  | 'tide_warn'     // 1.5s before tide — low rumble warning
   | 'tide_rise'     // water level +1
   | 'shark_roar'    // shark lunge / kill
+  | 'heartbeat'     // in-water danger pulse
   | 'gull_cry'      // ambient seagull
+  | 'foot_dry'      // soft footstep on dry tile
+  | 'carry_grunt'   // boulder-carry effort
+  | 'ready'         // READY beep
+  | 'go'            // GO! beep
   | 'game_over';
 
 let ctx: AudioContext | null = null;
@@ -111,10 +117,36 @@ export function playSfx(key: SfxKey) {
       tone(720, 'triangle', 0.10, 0.18, t, 1200);
       tone(1200, 'triangle', 0.12, 0.14, t + 0.08, 1900);
       break;
+    case 'tide_warn':
+      // Building low rumble — tide coming
+      tone(70, 'sine', 0.7, 0.18, t, 55);
+      noiseBurst(0.5, 0.12, t + 0.1, 380);
+      break;
     case 'tide_rise':
       // Low whoosh — tide swelling up
-      noiseBurst(0.65, 0.22, t, 700);
-      tone(140, 'sine', 0.55, 0.16, t, 80);
+      noiseBurst(0.85, 0.30, t, 900);
+      tone(140, 'sine', 0.75, 0.22, t, 70);
+      // Crest crash on top
+      noiseBurst(0.25, 0.20, t + 0.2, 4500);
+      break;
+    case 'heartbeat':
+      // Pair of low thumps
+      tone(58, 'sine', 0.10, 0.22, t, 42);
+      tone(58, 'sine', 0.10, 0.20, t + 0.18, 42);
+      break;
+    case 'foot_dry':
+      noiseBurst(0.04, 0.05, t, 2200);
+      break;
+    case 'carry_grunt':
+      tone(180, 'sawtooth', 0.18, 0.10, t, 120);
+      noiseBurst(0.16, 0.04, t + 0.02, 900);
+      break;
+    case 'ready':
+      tone(720, 'triangle', 0.18, 0.16, t, 720);
+      break;
+    case 'go':
+      tone(880, 'square', 0.10, 0.20, t, 1200);
+      tone(1320, 'square', 0.14, 0.16, t + 0.06, 1500);
       break;
     case 'shark_roar':
       // Aggressive low growl + splash

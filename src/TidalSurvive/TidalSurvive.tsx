@@ -3,10 +3,12 @@ import { Canvas } from '@react-three/fiber';
 import { Leaderboard, useGameScore } from '@shared/leaderboard';
 import { Scene } from './components/Scene';
 import { SplashScene } from './components/SplashScene';
-import { createGameState } from './hooks/useGameLoop';
+import { Tutorial } from './components/Tutorial';
+import { Pellets } from './components/Pellets';
+import { createGameState, TIDE_WARN_LEAD } from './hooks/useGameLoop';
 import { useJoystick } from './hooks/useJoystick';
 import { playSfx, startBgm, stopBgm, unlockAudio } from './utils/audio';
-import { TIDE_INTERVAL } from './constants';
+import { TIDE_INTERVAL, SHARK_DELAY_IN_WATER } from './constants';
 import { t } from './i18n';
 import alteruSvg from './img/alteru.svg';
 import './TidalSurvive.less';
@@ -14,6 +16,7 @@ import './SplashScene.less';
 
 type Phase = 'splash' | 'playing' | 'gameover';
 const HIGH_KEY = 'tidal_survive_high';
+const TUTORIAL_KEY = 'tidal_survive_tutorial_seen';
 
 export function TidalSurvive() {
   const [phase, setPhase] = useState<Phase>('splash');
@@ -23,10 +26,14 @@ export function TidalSurvive() {
   const [gameOverReason, setGameOverReason] = useState<'drowned' | 'shark'>('drowned');
   const [showLeaderboard, setShowLeaderboard] = useState(false);
 
-  // Floating water flash on death + tide-rise tick
+  // Death flash + tide-rise tick + HUD readouts
   const [waterFlash, setWaterFlash] = useState<{ key: number; kind: 'shark' | 'drown' } | null>(null);
   const [tidePulse, setTidePulse] = useState(0);
   const [tideCountdown, setTideCountdown] = useState(TIDE_INTERVAL);
+  const [tideWarn, setTideWarn] = useState(false);
+  const [sharkCountdown, setSharkCountdown] = useState<number | null>(null);
+  const [startRitual, setStartRitual] = useState<'idle' | 'ready' | 'go' | 'done'>('done');
+  const [tutorialStep, setTutorialStep] = useState<'move' | 'pickup' | 'drop' | 'tide' | 'done'>('done');
 
   const stateRef = useRef(createGameState());
   const { stickRef, view } = useJoystick(phase === 'playing');
@@ -66,23 +73,41 @@ export function TidalSurvive() {
 
   const start = useCallback(async () => {
     await unlockAudio();
-    stateRef.current = createGameState();
+    const showTutorial = !localStorage.getItem(TUTORIAL_KEY);
+    stateRef.current = createGameState(showTutorial);
+    stateRef.current.startRitualSince = 0;
     setScore(0);
     setTideCountdown(TIDE_INTERVAL);
+    setTutorialStep(showTutorial ? 'move' : 'done');
+    setStartRitual('ready');
     setPhase('playing');
     startBgm(0.07);
   }, []);
 
   useEffect(() => () => { stopBgm(); }, []);
 
-  // Tide countdown HUD — read from state.current.nextTideAt - state.current.time
+  // Tide countdown + warning + shark countdown + start ritual + tutorial step
   useEffect(() => {
     if (phase !== 'playing') return;
     const id = window.setInterval(() => {
       const d = stateRef.current;
       const remaining = Math.max(0, d.nextTideAt - d.time);
       setTideCountdown(remaining);
-    }, 100);
+      setTideWarn(d.tutorialStep === 'done' && remaining > 0 && remaining <= TIDE_WARN_LEAD);
+      // Shark countdown: seconds until shark bites, while in water
+      if (d.inWaterTime > 0.05 && !d.gameOver) {
+        const remain = SHARK_DELAY_IN_WATER - d.inWaterTime;
+        setSharkCountdown(Math.max(0, remain));
+      } else {
+        setSharkCountdown(null);
+      }
+      setStartRitual(d.startRitual);
+      setTutorialStep(d.tutorialStep);
+      // First-play: persist tutorial-seen flag once they reach 'done'
+      if (d.tutorialStep === 'done' && !localStorage.getItem(TUTORIAL_KEY)) {
+        localStorage.setItem(TUTORIAL_KEY, '1');
+      }
+    }, 80);
     return () => window.clearInterval(id);
   }, [phase]);
 
@@ -111,6 +136,9 @@ export function TidalSurvive() {
         </div>
       )}
 
+      {/* Floating +N pellets — projected from world space each frame */}
+      {phase === 'playing' && <Pellets stateRef={stateRef} />}
+
       {/* HUD */}
       {showCanvas && (
         <div className="ts__hud">
@@ -128,10 +156,22 @@ export function TidalSurvive() {
         </div>
       )}
 
-      {/* Tide countdown bar */}
-      {phase === 'playing' && (
-        <div className={`ts__tidebar ${tidePulse % 2 === 0 ? 'ts__tidebar--a' : 'ts__tidebar--b'}`} key={tidePulse}>
-          <div className="ts__tidebar-label">NEXT TIDE</div>
+      {/* Shark countdown — only when in water */}
+      {phase === 'playing' && sharkCountdown !== null && sharkCountdown < SHARK_DELAY_IN_WATER && (
+        <div className={`ts__shark-warn ${sharkCountdown < 0.8 ? 'ts__shark-warn--imminent' : ''}`}>
+          <div className="ts__shark-warn-label">SHARK</div>
+          <div className="ts__shark-warn-secs">{sharkCountdown.toFixed(1)}s</div>
+        </div>
+      )}
+
+      {/* Tide countdown bar — hidden during early tutorial steps so it
+          doesn't pre-empt the lesson, then revealed for the 'tide' step. */}
+      {phase === 'playing' && (tutorialStep === 'tide' || tutorialStep === 'done') && (
+        <div
+          className={`ts__tidebar ${tideWarn ? 'ts__tidebar--warn' : ''} ${tidePulse % 2 === 0 ? 'ts__tidebar--a' : 'ts__tidebar--b'}`}
+          key={tidePulse}
+        >
+          <div className="ts__tidebar-label">{tideWarn ? 'TIDE!' : 'NEXT TIDE'}</div>
           <div className="ts__tidebar-track">
             <div className="ts__tidebar-fill" style={{ width: `${tideFraction * 100}%` }} />
           </div>
@@ -139,12 +179,24 @@ export function TidalSurvive() {
         </div>
       )}
 
-      {/* Water flash on death (red for shark, blue for drown) */}
+      {/* READY / GO ritual overlay */}
+      {phase === 'playing' && (startRitual === 'ready' || startRitual === 'go') && (
+        <div className="ts__ritual">
+          <div className={`ts__ritual-word ts__ritual-word--${startRitual}`}>
+            {startRitual === 'ready' ? 'READY' : 'GO!'}
+          </div>
+        </div>
+      )}
+
+      {/* Tutorial overlay */}
+      {phase === 'playing' && tutorialStep !== 'done' && startRitual === 'done' && (
+        <Tutorial step={tutorialStep} />
+      )}
+
       {waterFlash && (
         <div className={`ts__flash ts__flash--${waterFlash.kind}`} key={waterFlash.key} />
       )}
 
-      {/* Joystick visual */}
       {view.active && (
         <div className="ts__joystick" style={{ left: view.ox, top: view.oy }}>
           <div className="ts__joystick__ring">
@@ -153,10 +205,8 @@ export function TidalSurvive() {
         </div>
       )}
 
-      {/* Splash */}
       {phase === 'splash' && <SplashScene onStart={start} highScore={highScore} />}
 
-      {/* Game over */}
       {phase === 'gameover' && (
         <div className="ts__gameover">
           <div className="ts__gameover-eyebrow">

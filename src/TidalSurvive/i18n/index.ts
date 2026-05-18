@@ -21,6 +21,10 @@ const dict: Record<Locale, Record<string, string>> = {
     rule_collect: '走到木板/巨石上自动捡起',
     rule_drop:    '回到脚下的格子自动放下，垒高它',
     rule_dodge:   '入水超过 2 秒，鲨鱼就来',
+    tut_move:     '拖动屏幕任意位置开始移动',
+    tut_pickup:   '走到木板上 — 自动捡起',
+    tut_drop:     '走到金光柱所在的格子放下',
+    tut_tide:     '潮水正在上涨 — 垒高才能活下去',
   },
   en: {
     title: 'Tidal Survive',
@@ -36,6 +40,10 @@ const dict: Record<Locale, Record<string, string>> = {
     rule_collect: 'Walk over plank / boulder to pick up',
     rule_drop:    'Drop on your tile to raise its height',
     rule_dodge:   '2s in water → shark bite',
+    tut_move:     'DRAG ANYWHERE TO MOVE',
+    tut_pickup:   'WALK ONTO THE PLANK — AUTO PICK UP',
+    tut_drop:     'WALK TO THE GOLD BEACON · DROP',
+    tut_tide:     'WATER IS RISING — STACK TO STAY DRY',
   },
 };
 

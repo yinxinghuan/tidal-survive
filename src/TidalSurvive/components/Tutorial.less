@@ -1,0 +1,74 @@
+// Tutorial overlay — sits above the canvas, below the HUD, blocking no input.
+.ts-tut {
+  position: absolute;
+  inset: 0;
+  z-index: 13;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'JetBrains Mono', monospace;
+
+  &__finger {
+    position: absolute;
+    left: 50%;
+    top: 60%;
+    transform: translate(-50%, -50%);
+    filter: drop-shadow(0 6px 16px rgba(0,0,0,.55));
+    animation: ts-tut-finger 1.6s ease-in-out infinite;
+  }
+
+  &__caption {
+    background: rgba(8, 18, 32, .78);
+    border: 1px solid rgba(255, 255, 255, .12);
+    border-radius: 14px;
+    padding: 12px 22px;
+    color: #fff;
+    font-weight: 600;
+    font-size: 13px;
+    letter-spacing: .18em;
+    text-transform: uppercase;
+    text-align: center;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    animation: ts-tut-caption-in 0.4s ease-out;
+    text-shadow: 0 2px 8px rgba(0,0,0,.5);
+    max-width: 80vw;
+    white-space: normal;
+    word-break: break-word;
+
+    &--top {
+      position: absolute;
+      top: calc(env(safe-area-inset-top, 8px) + 92px);
+      left: 50%;
+      transform: translateX(-50%);
+    }
+    &--bottom {
+      position: absolute;
+      bottom: calc(env(safe-area-inset-bottom, 0px) + 90px);
+      left: 50%;
+      transform: translateX(-50%);
+    }
+  }
+
+  // Step variants — could tint per-step. For now keep them identical.
+  &--move .ts-tut__caption {
+    position: absolute;
+    top: 28%;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes ts-tut-finger {
+  0%   { transform: translate(-50%, -50%) translateX(-32px); opacity: .8; }
+  20%  { opacity: 1; }
+  50%  { transform: translate(-50%, -50%) translateX( 32px); opacity: 1; }
+  80%  { opacity: 1; }
+  100% { transform: translate(-50%, -50%) translateX(-32px); opacity: .8; }
+}
+
+@keyframes ts-tut-caption-in {
+  0%   { opacity: 0; transform: translateY(-6px) translateX(-50%); }
+  100% { opacity: 1; transform: translateY(0)    translateX(-50%); }
+}

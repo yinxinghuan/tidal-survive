@@ -10,7 +10,7 @@ import {
   SHARK_COUNT, SHARK_PATROL_SPEED, SHARK_LUNGE_SPEED, SHARK_KILL_RADIUS, SHARK_ORBIT_R,
   BIRD_COUNT, HEIGHT_BONUS,
 } from '../constants';
-import type { Item, ItemKind, Shark, Bird, Stick } from '../types';
+import type { Item, ItemKind, Shark, Bird, Stick, Pellet, DustRing, TutorialStep } from '../types';
 
 // World ↔ grid helpers. The grid is centered on origin.
 // Tile (col, row): col=0..GRID-1 left→right (x), row=0..GRID-1 back→front (z).
@@ -32,9 +32,19 @@ export function tileTopY(stack: number): number {
   return GROUND_Y + Math.max(0, stack) * TILE_THICKNESS;
 }
 
+// Pre-warning window before a tide event. Bar flashes amber, low rumble plays.
+export const TIDE_WARN_LEAD = 1.5;
+
+// Window during which a tile's stack just grew — used by Tile.tsx to play a
+// scale-in animation on the new top layer.
+export const TILE_GROW_ANIM = 0.28;
+
 export interface GameRef {
   // Grid state — heights[col][row] = how many blocks stacked. 0 = bare sand at base.
   heights: number[][];
+  // For each tile, the game-time at which it last grew. Tile.tsx reads this
+  // and applies a scale-in to the topmost layer for TILE_GROW_ANIM seconds.
+  lastGrowAt: number[][];
   // Player
   playerPos: THREE.Vector3;     // world XYZ; y = top of tile player is on (or water if drowning)
   playerRot: number;
@@ -42,13 +52,22 @@ export interface GameRef {
   playerRow: number;
   // Player carry
   carrying: ItemKind | null;
-  carryPhase: number;           // for visual bob while held
+  carryPhase: number;
 
   // Water level (continuous, lerps toward target on tide events)
   waterLevel: number;           // current displayed level
   waterLevelTarget: number;     // step target after a tide event
   nextTideAt: number;           // game time when level will increment next
   inWaterTime: number;          // seconds player has been in water (resets when dry)
+  tideWarnPlayed: number;       // last warn level we already played a rumble for
+
+  // Camera shake — additive offsets applied by FollowCamera (decays each frame)
+  shakeX: number;
+  shakeY: number;
+  shakeZ: number;
+  // Tide-event camera dip (sinks then bounces back)
+  tideDipPhase: number;         // 0 = idle, otherwise t-since dip started
+  tideDipMag: number;
 
   // Items
   items: Item[];
@@ -61,6 +80,27 @@ export interface GameRef {
   // Birds (ambient gulls)
   birds: Bird[];
 
+  // Visual feedback (consumed by HUD / Scene each frame)
+  pellets: Pellet[];
+  dustRings: DustRing[];
+  pelletId: number;
+  ringId: number;
+  // Times we last spawned a heartbeat / foot SFX so we can throttle them
+  lastHeartbeatAt: number;
+  lastFootAt: number;
+
+  // Onboarding
+  startRitual: 'idle' | 'ready' | 'go' | 'done';
+  startRitualSince: number;     // game-time the current phase began
+  // Tutorial overlay step. New player only (Tutorial.tsx persists "seen" flag
+  // in localStorage). When step !== 'done', the tide is paused.
+  tutorialStep: TutorialStep;
+  // For tutorial: the tile we want the player to drop on (set when they pick up)
+  tutorialDropTarget: { col: number; row: number } | null;
+  // Tutorial scripted item — we spawn a guaranteed plank in the player's path
+  // so the pickup step actually has something to teach with.
+  tutorialItemId: number | null;
+
   // Timers + state
   time: number;
   score: number;
@@ -71,13 +111,16 @@ export interface GameRef {
   initialized: boolean;
 }
 
-export function createGameState(): GameRef {
+export function createGameState(tutorialEnabled = false): GameRef {
   const heights: number[][] = [];
+  const lastGrowAt: number[][] = [];
   for (let c = 0; c < GRID; c++) {
     heights.push(new Array(GRID).fill(0));
+    lastGrowAt.push(new Array(GRID).fill(-99));
   }
   return {
     heights,
+    lastGrowAt,
     playerPos: new THREE.Vector3(0, GROUND_Y, 0),
     playerRot: 0,
     playerCol: Math.floor(GRID / 2),
@@ -88,11 +131,25 @@ export function createGameState(): GameRef {
     waterLevelTarget: 0,
     nextTideAt: TIDE_INTERVAL,
     inWaterTime: 0,
+    tideWarnPlayed: -1,
+    shakeX: 0, shakeY: 0, shakeZ: 0,
+    tideDipPhase: 0, tideDipMag: 0,
     items: [],
-    nextItemSpawnAt: 1.5,
+    nextItemSpawnAt: tutorialEnabled ? 0.6 : 1.5,
     itemIdCounter: 1,
     sharks: [],
     birds: [],
+    pellets: [],
+    dustRings: [],
+    pelletId: 1,
+    ringId: 1,
+    lastHeartbeatAt: 0,
+    lastFootAt: 0,
+    startRitual: 'ready',
+    startRitualSince: 0,
+    tutorialStep: tutorialEnabled ? 'move' : 'done',
+    tutorialDropTarget: null,
+    tutorialItemId: null,
     time: 0,
     score: 0,
     maxHeightReached: 0,
@@ -123,6 +180,31 @@ function heightGain(kind: ItemKind): number {
   return 0; // paddle: no height
 }
 
+function pushPellet(d: GameRef, kind: 'pick' | 'height' | 'paddle', text: string, x: number, y: number, z: number) {
+  d.pellets.push({
+    id: d.pelletId++,
+    kind, text, worldX: x, worldY: y, worldZ: z,
+    startTime: d.time,
+  });
+  // Keep cap so the array doesn't grow
+  if (d.pellets.length > 24) d.pellets.shift();
+}
+
+function pushRing(d: GameRef, kind: 'dust' | 'splash' | 'tide', x: number, y: number, z: number) {
+  d.dustRings.push({
+    id: d.ringId++,
+    kind, worldX: x, worldY: y, worldZ: z,
+    startTime: d.time,
+  });
+  if (d.dustRings.length > 16) d.dustRings.shift();
+}
+
+function shake(d: GameRef, amount: number) {
+  d.shakeX = Math.max(d.shakeX, amount);
+  d.shakeY = Math.max(d.shakeY, amount * 0.6);
+  d.shakeZ = Math.max(d.shakeZ, amount);
+}
+
 export interface GameLoopParams {
   state: React.MutableRefObject<GameRef>;
   playing: boolean;
@@ -131,9 +213,12 @@ export interface GameLoopParams {
   onGameOver: (finalScore: number, reason: 'drowned' | 'shark') => void;
   onWaterFlash?: (kind: 'shark' | 'drown') => void;
   onTideEvent?: () => void;
+  // True when the in-water shark countdown should be visible in the HUD.
+  // Fires every frame so the parent component can read it via the state ref.
   playSfx: (key:
     | 'splash' | 'thunk' | 'thud' | 'plank_drop' | 'boulder_lift'
-    | 'paddle' | 'tide_rise' | 'shark_roar' | 'gull_cry' | 'game_over') => void;
+    | 'paddle' | 'tide_warn' | 'tide_rise' | 'shark_roar' | 'heartbeat'
+    | 'foot_dry' | 'carry_grunt' | 'ready' | 'go' | 'gull_cry' | 'game_over') => void;
   haptic?: (kind: 'light' | 'heavy') => void;
 }
 
@@ -181,16 +266,73 @@ export function useGameLoop({
 
     d.time += c;
 
-    // ===== TIDE TICK =====
-    if (d.time >= d.nextTideAt) {
-      d.waterLevelTarget += 1;
-      d.nextTideAt += TIDE_INTERVAL;
-      playSfx('tide_rise');
-      onTideEvent?.();
+    // ===== START RITUAL (READY / GO) =====
+    // During 'ready' (1.0s) and 'go' (0.5s) the tide clock is paused and the
+    // player can already move around. SFX cue at each transition.
+    if (d.startRitual !== 'done') {
+      const phaseAge = d.time - d.startRitualSince;
+      if (d.startRitual === 'ready') {
+        if (phaseAge === 0 || (phaseAge < c * 1.5 && d.startRitualSince === 0)) {
+          // First frame
+          playSfx('ready');
+        }
+        if (phaseAge >= 1.0) {
+          d.startRitual = 'go';
+          d.startRitualSince = d.time;
+          playSfx('go');
+        }
+      } else if (d.startRitual === 'go') {
+        if (phaseAge >= 0.5) {
+          d.startRitual = 'done';
+        }
+      }
+      // While ritual is active, freeze tide clock (push it forward with c each frame).
+      d.nextTideAt += c;
     }
+
+    // ===== TIDE WARN + TICK =====
+    // The tide clock is paused only during the *teaching* tutorial steps
+    // (move / pickup / drop). Once the player has reached step 'tide' the
+    // clock runs so the first tide event can fire and the lesson lands.
+    const tideClockRunning = d.tutorialStep === 'done' || d.tutorialStep === 'tide';
+    if (tideClockRunning) {
+      const upcomingLevel = d.waterLevelTarget + 1;
+      if (
+        d.tideWarnPlayed !== upcomingLevel &&
+        d.nextTideAt - d.time <= TIDE_WARN_LEAD &&
+        d.nextTideAt - d.time > 0
+      ) {
+        d.tideWarnPlayed = upcomingLevel;
+        playSfx('tide_warn');
+      }
+
+      if (d.time >= d.nextTideAt) {
+        d.waterLevelTarget += 1;
+        d.nextTideAt += TIDE_INTERVAL;
+        playSfx('tide_rise');
+        onTideEvent?.();
+        pushRing(d, 'tide', 0, WATER_BASE_Y + d.waterLevelTarget * WATER_Y_PER_LEVEL, 0);
+        d.tideDipPhase = 0.001;
+        d.tideDipMag = 0.45;
+        shake(d, 0.25);
+        haptic?.('light');
+      }
+    } else {
+      d.nextTideAt += c;
+    }
+
     // Lerp water level toward target (smooth visual rise)
     if (d.waterLevel < d.waterLevelTarget) {
       d.waterLevel = Math.min(d.waterLevelTarget, d.waterLevel + c * 1.2);
+    }
+
+    // ===== CAMERA SHAKE / DIP DECAY =====
+    d.shakeX *= Math.pow(0.001, c);
+    d.shakeY *= Math.pow(0.001, c);
+    d.shakeZ *= Math.pow(0.001, c);
+    if (d.tideDipPhase > 0) {
+      d.tideDipPhase += c;
+      if (d.tideDipPhase > 0.9) { d.tideDipPhase = 0; d.tideDipMag = 0; }
     }
 
     // ===== PLAYER MOVEMENT =====
@@ -203,7 +345,6 @@ export function useGameLoop({
         d.playerRot = Math.atan2(dir.x, dir.z);
       }
     }
-    // Clamp to a bit beyond the grid (let the player fall off)
     const halfWorld = (GRID / 2) * TILE_SIZE + 4;
     d.playerPos.x = Math.max(-halfWorld, Math.min(halfWorld, d.playerPos.x));
     d.playerPos.z = Math.max(-halfWorld, Math.min(halfWorld, d.playerPos.z));
@@ -215,8 +356,7 @@ export function useGameLoop({
       d.playerRow = onTile.row;
     }
 
-    // Stand height: top of the stack under the player IF that tile exists.
-    // If off-grid OR if water exceeds the tile, player is "in water".
+    // Stand height
     const waterY = WATER_BASE_Y + d.waterLevel * WATER_Y_PER_LEVEL;
     let standY = WATER_BASE_Y;
     let inWater = false;
@@ -226,26 +366,47 @@ export function useGameLoop({
       standY = top;
       if (waterY > top - DROWN_MARGIN) inWater = true;
     } else {
-      // Off the grid → in water
       inWater = true;
       standY = waterY;
     }
-    // Smooth y to standY
     d.playerPos.y += (standY - d.playerPos.y) * Math.min(1, c * 12);
 
-    // Track in-water time
+    // Track in-water time (only after the start ritual is past)
+    const beyondStart = d.startRitual === 'done' && d.time > GRACE_PERIOD;
     if (inWater) {
-      if (d.inWaterTime === 0 && d.time > GRACE_PERIOD) playSfx('splash');
+      if (d.inWaterTime === 0 && beyondStart) {
+        playSfx('splash');
+        pushRing(d, 'splash', d.playerPos.x, waterY + 0.05, d.playerPos.z);
+      }
       d.inWaterTime += c;
     } else {
-      if (d.inWaterTime > 0.2 && d.time > GRACE_PERIOD) playSfx('splash');
+      if (d.inWaterTime > 0.2 && beyondStart) {
+        playSfx('splash');
+        pushRing(d, 'splash', d.playerPos.x, waterY + 0.05, d.playerPos.z);
+      }
       d.inWaterTime = 0;
     }
 
+    // ===== HEARTBEAT in water (after danger threshold approaches) =====
+    if (inWater && d.inWaterTime > 0.4 && d.time > d.lastHeartbeatAt + 0.6) {
+      playSfx('heartbeat');
+      d.lastHeartbeatAt = d.time;
+    }
+
+    // ===== FOOTFALL on dry ground (throttled, only when actually moving) =====
+    if (!inWater && stick.active && Math.hypot(stick.x, stick.y) > 0.4) {
+      const interval = d.carrying === 'boulder' ? 0.55 : 0.38;
+      if (d.time > d.lastFootAt + interval) {
+        playSfx('foot_dry');
+        d.lastFootAt = d.time;
+      }
+    }
+
     // ===== ITEM SPAWN =====
-    if (d.time >= d.nextItemSpawnAt && d.items.length < ITEM_MAX_ACTIVE) {
+    // Tutorial steps own their own spawns (scripted plank). Random spawns only
+    // resume once the tutorial is done (or it was never on).
+    if (d.time >= d.nextItemSpawnAt && d.items.length < ITEM_MAX_ACTIVE && d.tutorialStep === 'done') {
       d.nextItemSpawnAt = d.time + ITEM_SPAWN_INTERVAL_MIN + Math.random() * (ITEM_SPAWN_INTERVAL_MAX - ITEM_SPAWN_INTERVAL_MIN);
-      // Pick a tile that is currently dry (above water) so the item lands somewhere reachable.
       let tries = 0;
       let col = 0, row = 0, stack = 0;
       while (tries++ < 20) {
@@ -253,7 +414,7 @@ export function useGameLoop({
         row = Math.floor(Math.random() * GRID);
         stack = d.heights[col][row];
         const top = tileTopY(stack);
-        if (top > waterY - DROWN_MARGIN) break; // dry-ish tile
+        if (top > waterY - DROWN_MARGIN) break;
       }
       const center = tileCenter(col, row);
       const kind = pickItemKind();
@@ -270,12 +431,28 @@ export function useGameLoop({
       });
     }
 
-    // ===== ITEM PHYSICS (gravity drop, then bob) =====
+    // ===== TUTORIAL SCRIPTED PLANK (step 'pickup' guarantees a plank near player) =====
+    if (d.tutorialStep === 'pickup' && d.tutorialItemId === null && d.items.length < ITEM_MAX_ACTIVE) {
+      // Place a plank 2 tiles in front of the player (or center area)
+      const targetCol = Math.min(GRID - 1, Math.max(0, d.playerCol + 2));
+      const targetRow = d.playerRow;
+      const cc = tileCenter(targetCol, targetRow);
+      const id = d.itemIdCounter++;
+      d.items.push({
+        id, kind: 'plank',
+        position: new THREE.Vector3(cc.x, tileTopY(0) + 0.05 + ITEM_DROP_HEIGHT, cc.z),
+        col: targetCol, row: targetRow,
+        vy: 0, landed: false, landY: tileTopY(0) + 0.05,
+        phase: 0,
+      });
+      d.tutorialItemId = id;
+    }
+
+    // ===== ITEM PHYSICS =====
     for (const it of d.items) {
       if (!it.landed) {
         it.vy -= 28 * c;
         it.position.y += it.vy * c;
-        // Re-evaluate landY in case the stack changed under it
         const stackHere = d.heights[it.col][it.row];
         const top = tileTopY(stackHere) + 0.05;
         it.landY = top;
@@ -283,57 +460,91 @@ export function useGameLoop({
           it.position.y = it.landY;
           it.vy = 0;
           it.landed = true;
+          // Subtle dust ring on land
+          pushRing(d, 'dust', it.position.x, it.position.y, it.position.z);
         }
       } else {
-        // Idle bob
         it.position.y = it.landY + Math.sin(d.time * 2 + it.phase) * 0.02;
       }
     }
 
-    // ===== PICKUP (only if not carrying) =====
-    if (!d.carrying && d.time > GRACE_PERIOD * 0.5) {
+    // ===== PICKUP =====
+    if (!d.carrying && d.time > GRACE_PERIOD * 0.3) {
       for (let i = d.items.length - 1; i >= 0; i--) {
         const it = d.items[i];
         if (!it.landed) continue;
         const dx = it.position.x - d.playerPos.x;
         const dz = it.position.z - d.playerPos.z;
         if (Math.sqrt(dx * dx + dz * dz) < ITEM_PICKUP_RADIUS) {
-          // Special: paddle gives tide buffer immediately
           if (it.kind === 'paddle') {
             d.nextTideAt += PADDLE_TIDE_BUFFER;
             playSfx('paddle');
             haptic?.('light');
+            pushPellet(d, 'paddle', `+${PADDLE_TIDE_BUFFER}s TIDE`, it.position.x, it.position.y + 0.6, it.position.z);
+            pushRing(d, 'dust', it.position.x, it.position.y, it.position.z);
+            shake(d, 0.08);
           } else {
             d.carrying = it.kind;
             playSfx(it.kind === 'boulder' ? 'boulder_lift' : 'thunk');
             haptic?.('light');
-            // Lock the drop to the *next* tile — prevents the auto-drop logic
-            // from instantly raising the tile we picked up on this same frame.
+            pushPellet(d, 'pick', it.kind === 'boulder' ? '+2 PICK' : '+1 PICK', it.position.x, it.position.y + 0.6, it.position.z);
+            pushRing(d, 'dust', it.position.x, it.position.y, it.position.z);
             if (onTile) (d as any).__lastDropTile = onTile.col * GRID + onTile.row;
+            // Tutorial: advance from 'pickup' to 'drop'
+            if (d.tutorialStep === 'pickup' && it.id === d.tutorialItemId) {
+              d.tutorialStep = 'drop';
+              // Pick a drop target adjacent to the pickup tile (player's col-1 row)
+              const tCol = Math.max(0, Math.min(GRID - 1, it.col - 2));
+              d.tutorialDropTarget = { col: tCol, row: it.row };
+              d.tutorialItemId = null;
+            }
           }
           d.items.splice(i, 1);
           break;
         }
       }
     } else if (d.carrying && onTile) {
-      // ===== AUTO DROP =====
-      // When you stand on a tile while carrying, drop is automatic: each tile
-      // can only be raised by a discrete drop event. We mark a "lastDropTile"
-      // so you don't multi-stack on the same tile while crossing it.
       const tileId = onTile.col * GRID + onTile.row;
       if ((d as any).__lastDropTile !== tileId) {
         const gain = heightGain(d.carrying);
         if (gain > 0) {
           d.heights[onTile.col][onTile.row] += gain;
+          d.lastGrowAt[onTile.col][onTile.row] = d.time;
           playSfx(d.carrying === 'boulder' ? 'thud' : 'plank_drop');
+          if (d.carrying === 'boulder') playSfx('carry_grunt');
           haptic?.(d.carrying === 'boulder' ? 'heavy' : 'light');
           (d as any).__lastDropTile = tileId;
+          // +N HEIGHT pellet (only celebrate when we hit a NEW max)
+          const center = tileCenter(onTile.col, onTile.row);
+          const newTop = tileTopY(d.heights[onTile.col][onTile.row]);
+          pushPellet(d, 'height', `+${gain * HEIGHT_BONUS}`, center.x, newTop + 0.6, center.z);
+          pushRing(d, 'dust', center.x, GROUND_Y, center.z);
+          shake(d, d.carrying === 'boulder' ? 0.35 : 0.18);
           d.carrying = null;
+          // Tutorial advance
+          if (d.tutorialStep === 'drop') {
+            d.tutorialStep = 'tide';
+            d.tutorialDropTarget = null;
+            // Now release the tide clock — set nextTideAt 2.5s ahead so warn fires soon
+            d.nextTideAt = d.time + 2.5;
+          }
         }
       }
     }
-    // Reset drop-lock when player isn't carrying so a second pickup is fresh
     if (!d.carrying) (d as any).__lastDropTile = null;
+
+    // ===== TUTORIAL STATE TRANSITIONS =====
+    if (d.tutorialStep === 'move' && stick.active && d.time > 0.4) {
+      // Player started using the stick → advance
+      d.tutorialStep = 'pickup';
+    }
+    if (d.tutorialStep === 'tide') {
+      // Wait for one tide event to fire, then mark done
+      if (d.waterLevelTarget >= 1) {
+        d.tutorialStep = 'done';
+        // Schedule normal tide cadence from now on
+      }
+    }
 
     // ===== MAX HEIGHT TRACKING =====
     if (onTile) {
@@ -343,10 +554,8 @@ export function useGameLoop({
 
     // ===== SHARK AI =====
     for (const s of d.sharks) {
-      // y stays just under the water surface so the fin shows above
       s.position.y = waterY - 0.25;
-      if (inWater && d.time > GRACE_PERIOD) {
-        // Lunge toward player
+      if (inWater && beyondStart) {
         const dx = d.playerPos.x - s.position.x;
         const dz = d.playerPos.z - s.position.z;
         const dist = Math.sqrt(dx * dx + dz * dz);
@@ -358,7 +567,6 @@ export function useGameLoop({
           s.lunging = true;
         }
       } else {
-        // Patrol orbit
         s.orbit.phase += (SHARK_PATROL_SPEED / s.orbit.r) * c;
         const tx = s.orbit.cx + Math.cos(s.orbit.phase) * s.orbit.r;
         const tz = s.orbit.cz + Math.sin(s.orbit.phase) * s.orbit.r;
@@ -374,7 +582,6 @@ export function useGameLoop({
     for (const b of d.birds) {
       b.angle += b.speed * c;
     }
-    // Occasional gull cry
     if (d.time > d.lastGullAt + 6 + Math.random() * 4) {
       if (Math.random() < 0.5) playSfx('gull_cry');
       d.lastGullAt = d.time;
@@ -391,8 +598,7 @@ export function useGameLoop({
       onGameOver(d.score, reason);
     };
 
-    if (d.time > GRACE_PERIOD && inWater && d.inWaterTime > SHARK_DELAY_IN_WATER) {
-      // Check nearest shark distance
+    if (beyondStart && inWater && d.inWaterTime > SHARK_DELAY_IN_WATER) {
       let died = false;
       for (const s of d.sharks) {
         const dx = s.position.x - d.playerPos.x;
@@ -407,8 +613,7 @@ export function useGameLoop({
         return;
       }
     }
-    // Drown when fully submerged with no escape — i.e., even highest stack on field is under water
-    if (d.time > GRACE_PERIOD) {
+    if (beyondStart) {
       let highestStack = 0;
       for (let cc = 0; cc < GRID; cc++) {
         for (let rr = 0; rr < GRID; rr++) {
@@ -422,6 +627,12 @@ export function useGameLoop({
         return;
       }
     }
+
+    // ===== EXPIRE old pellets/rings (so the arrays don't grow forever) =====
+    const pelletLife = 1.0;
+    const ringLife = 0.9;
+    while (d.pellets.length && d.time - d.pellets[0].startTime > pelletLife) d.pellets.shift();
+    while (d.dustRings.length && d.time - d.dustRings[0].startTime > ringLife) d.dustRings.shift();
 
     // ===== SCORE =====
     const newScore = Math.floor(d.time) + d.maxHeightReached * HEIGHT_BONUS;

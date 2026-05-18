@@ -135,6 +135,115 @@
     }
     // Pulse the whole bar each time a tide event fires
     &--a, &--b { animation: ts-tide-pulse 600ms ease-out; }
+
+    // Pre-tide warning state — bar goes amber + flashes
+    &--warn {
+      border-color: rgba(255, 200, 100, .55);
+      animation: ts-tide-warn 0.5s ease-in-out infinite alternate;
+
+      .ts__tidebar-label { color: #ffd370; }
+      .ts__tidebar-fill {
+        background: linear-gradient(90deg, #ff9544 0%, #ffe17a 100%);
+        box-shadow: 0 0 16px rgba(255, 170, 70, .9);
+      }
+      .ts__tidebar-secs { color: #ffe17a; }
+    }
+  }
+
+  // ===== READY / GO ritual =====
+  &__ritual {
+    position: absolute;
+    inset: 0;
+    z-index: 18;
+    pointer-events: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  &__ritual-word {
+    font-family: 'Baloo 2', sans-serif;
+    font-weight: 800;
+    letter-spacing: .04em;
+    text-align: center;
+    text-shadow:
+      0 6px 0 rgba(0,0,0,.08),
+      0 14px 36px rgba(255, 170, 70, .55),
+      0 0 80px rgba(255, 200, 100, .35);
+    &--ready {
+      font-size: clamp(80px, 22vw, 140px);
+      color: #ffe17a;
+      animation: ts-ritual-ready 1.0s ease-out forwards;
+    }
+    &--go {
+      font-size: clamp(110px, 30vw, 200px);
+      background: linear-gradient(180deg, #ffe17a 0%, #ff9844 60%, #ff5b3a 100%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      animation: ts-ritual-go 0.5s ease-out forwards;
+    }
+  }
+
+  // ===== Shark countdown =====
+  &__shark-warn {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -110%);
+    z-index: 11;
+    pointer-events: none;
+    background: rgba(120, 18, 18, .82);
+    border: 1px solid rgba(255, 100, 100, .55);
+    border-radius: 14px;
+    padding: 8px 18px 9px;
+    box-shadow: 0 0 24px rgba(255, 60, 60, .55);
+    font-family: 'JetBrains Mono', monospace;
+    color: #ffd5d5;
+    text-align: center;
+    letter-spacing: .22em;
+    animation: ts-shark-pulse 0.5s ease-in-out infinite alternate;
+
+    &--imminent {
+      background: rgba(180, 24, 24, .92);
+      border-color: rgba(255, 200, 200, .9);
+      animation: ts-shark-pulse-fast 0.18s ease-in-out infinite alternate;
+    }
+
+    &-label {
+      font-size: 10px;
+      font-weight: 600;
+    }
+    &-secs {
+      font-family: 'Baloo 2', sans-serif;
+      font-weight: 800;
+      font-size: 28px;
+      color: #fff;
+      letter-spacing: 0;
+      line-height: 1.05;
+    }
+  }
+
+  // ===== Floating +N pellets =====
+  &__pellets {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 14;
+  }
+  &__pellet {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    font-family: 'Baloo 2', sans-serif;
+    font-weight: 800;
+    font-size: 26px;
+    letter-spacing: 0;
+    text-shadow: 0 2px 10px rgba(0,0,0,.6);
+    animation: ts-pellet 1.0s ease-out forwards;
+    will-change: transform, opacity;
+
+    &--pick   { color: #ffe17a; }
+    &--height { color: #6dff7a; }
+    &--paddle { color: #38e6ff; }
   }
 
   // ===== Water flash (death) =====
@@ -273,4 +382,38 @@
   0%   { transform: translateX(-50%) scale(1.0); box-shadow: 0 0 0 rgba(95, 182, 255, 0); }
   35%  { transform: translateX(-50%) scale(1.08); box-shadow: 0 0 22px rgba(95, 182, 255, .55); }
   100% { transform: translateX(-50%) scale(1.0); box-shadow: 0 0 0 rgba(95, 182, 255, 0); }
+}
+
+@keyframes ts-tide-warn {
+  0%   { transform: translateX(-50%) scale(1.0); box-shadow: 0 0 8px rgba(255, 170, 70, .4); }
+  100% { transform: translateX(-50%) scale(1.05); box-shadow: 0 0 26px rgba(255, 170, 70, .85); }
+}
+
+@keyframes ts-ritual-ready {
+  0%   { opacity: 0; transform: scale(.5); }
+  20%  { opacity: 1; transform: scale(1.1); }
+  80%  { opacity: 1; transform: scale(1.0); }
+  100% { opacity: 0; transform: scale(.95); }
+}
+@keyframes ts-ritual-go {
+  0%   { opacity: 0; transform: scale(.5); }
+  15%  { opacity: 1; transform: scale(1.25); }
+  60%  { opacity: 1; transform: scale(1.0); }
+  100% { opacity: 0; transform: scale(.9); }
+}
+
+@keyframes ts-shark-pulse {
+  0%   { transform: translate(-50%, -110%) scale(1.0); }
+  100% { transform: translate(-50%, -110%) scale(1.07); }
+}
+@keyframes ts-shark-pulse-fast {
+  0%   { transform: translate(-50%, -110%) scale(1.0); }
+  100% { transform: translate(-50%, -110%) scale(1.18); }
+}
+
+@keyframes ts-pellet {
+  0%   { opacity: 0; transform: translate(-50%, -50%) scale(.5); }
+  18%  { opacity: 1; transform: translate(-50%, -70%) scale(1.18); }
+  35%  { opacity: 1; transform: translate(-50%, -80%) scale(1.0); }
+  100% { opacity: 0; transform: translate(-50%, -130%) scale(.9); }
 }

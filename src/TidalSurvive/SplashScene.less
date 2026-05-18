@@ -111,7 +111,7 @@
     }
   }
   &__subtitle {
-    margin: 0 0 36px;
+    margin: 0 0 24px;
     font-family: 'JetBrains Mono', monospace;
     font-size: 11px;
     font-weight: 500;
@@ -121,6 +121,106 @@
     white-space: normal;
     max-width: 420px;
     word-break: break-word;
+  }
+
+  // ===== Demo strip: 3 tiles, sailor sprite, plank — 4s loop =====
+  &__demo {
+    margin: 8px 0 28px;
+    width: 280px;
+    max-width: 90vw;
+    padding: 14px 0 12px;
+    border-radius: 16px;
+    background: linear-gradient(180deg, rgba(10, 22, 38, .55), rgba(8, 18, 30, .65));
+    border: 1px solid rgba(150, 200, 240, .12);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+  }
+  &__demo-row {
+    position: relative;
+    width: 240px;
+    height: 76px;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+  }
+  &__demo-tile {
+    width: 64px;
+    height: 30px;
+    position: relative;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+  }
+  &__demo-block {
+    width: 100%;
+    height: 22px;
+    border-radius: 5px;
+    background: linear-gradient(180deg, #e6cf9c 0%, #c8ad75 100%);
+    box-shadow: 0 2px 0 rgba(0,0,0,.25);
+  }
+  // Middle tile grows: a second block fades+pops in mid-cycle
+  &__demo-tile--grow .ts-splash__demo-block--grown {
+    position: absolute;
+    bottom: 22px;
+    width: 100%;
+    height: 14px;
+    background: linear-gradient(180deg, #8a8278 0%, #56504a 100%);
+    border-radius: 5px;
+    opacity: 0;
+    transform: scaleY(0);
+    transform-origin: bottom;
+    animation: ts-splash-demo-grown 4s ease-in-out infinite;
+  }
+  &__demo-plank {
+    position: absolute;
+    left: 50%;
+    bottom: 22px;
+    width: 56px;
+    height: 8px;
+    transform: translateX(-50%);
+    background: linear-gradient(180deg, #a86a3a 0%, #7a4823 100%);
+    border-radius: 3px;
+    box-shadow: 0 2px 6px rgba(0,0,0,.5);
+    animation: ts-splash-demo-plank 4s ease-in-out infinite;
+  }
+  &__demo-sailor {
+    position: absolute;
+    bottom: 22px;
+    width: 18px;
+    height: 32px;
+    left: 0;
+    animation: ts-splash-demo-sailor 4s ease-in-out infinite;
+  }
+  &__demo-sailor-body {
+    width: 100%;
+    height: 100%;
+    border-radius: 5px;
+    background: linear-gradient(180deg, #ff8b3a 0%, #c25e1c 50%, #21314a 50%, #1b2540 100%);
+    box-shadow: 0 3px 6px rgba(0,0,0,.5);
+  }
+  &__demo-sailor-held {
+    position: absolute;
+    top: -10px;
+    left: -8px;
+    width: 34px;
+    height: 6px;
+    background: linear-gradient(180deg, #a86a3a 0%, #7a4823 100%);
+    border-radius: 2px;
+    opacity: 0;
+    animation: ts-splash-demo-held 4s ease-in-out infinite;
+  }
+  &__demo-caption {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: rgba(180, 220, 250, .7);
+    text-align: center;
+    padding: 0 12px;
   }
 
   &__best {
@@ -196,4 +296,41 @@
 @keyframes ts-splash-cta-pulse {
   0%   { transform: scale(.96); opacity: .9; }
   100% { transform: scale(1.22); opacity: 0; }
+}
+
+// ===== Demo loop keyframes (4s cycle) =====
+// 0.0s   sailor at tile 0 (left)
+// 0.0–1.0s  sailor walks right to tile 2 (plank)
+// 1.0s   pickup → plank vanishes, held plank appears
+// 1.0–2.0s  sailor walks left to tile 1 (middle)
+// 2.0s   drop → middle block "grown" appears, held plank hides
+// 2.0–3.5s  pause showing the new stack (player on top of tile 1)
+// 3.5–4.0s  fade reset back to tile 0
+
+@keyframes ts-splash-demo-sailor {
+  0%   { left: 0px; }
+  25%  { left: 200px; }       // walked to plank tile
+  35%  { left: 200px; bottom: 30px; } // mini bounce on pickup
+  50%  { left: 100px; bottom: 22px; } // walked back to middle
+  60%  { left: 100px; bottom: 36px; } // perched on new stack
+  88%  { left: 100px; bottom: 36px; }
+  100% { left: 0px; bottom: 22px; }
+}
+@keyframes ts-splash-demo-plank {
+  0%, 24%   { opacity: 1; }
+  25%       { opacity: 0; }   // picked up
+  100%      { opacity: 0; }   // reset at end of cycle
+}
+@keyframes ts-splash-demo-held {
+  0%, 24%   { opacity: 0; }
+  25%, 50%  { opacity: 1; }
+  51%       { opacity: 0; }   // dropped
+  100%      { opacity: 0; }
+}
+@keyframes ts-splash-demo-grown {
+  0%, 50%   { opacity: 0; transform: scaleY(0); }
+  52%       { opacity: 1; transform: scaleY(1.2); }
+  58%       { transform: scaleY(1.0); }
+  88%       { opacity: 1; transform: scaleY(1.0); }
+  100%      { opacity: 0; transform: scaleY(0); }
 }

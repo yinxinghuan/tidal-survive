@@ -97,6 +97,31 @@ export function SplashScene({ onStart, highScore }: { onStart: () => void; highS
         </h1>
         <p className="ts-splash__subtitle">{t('subtitle')}</p>
 
+        {/* Looping mechanic demo: sailor walks to a plank, picks up, walks
+            on, drops, tile grows. 4s cycle. Pure CSS keyframes — splash
+            phase keeps the Canvas unmounted per preload-safety rule. */}
+        <div className="ts-splash__demo" aria-hidden>
+          <div className="ts-splash__demo-row">
+            {/* 3 tiles. Middle tile grows by 1 layer at t=3.0s. */}
+            <div className="ts-splash__demo-tile" data-i="0"><div className="ts-splash__demo-block" /></div>
+            <div className="ts-splash__demo-tile ts-splash__demo-tile--grow" data-i="1">
+              <div className="ts-splash__demo-block" />
+              <div className="ts-splash__demo-block ts-splash__demo-block--grown" />
+            </div>
+            <div className="ts-splash__demo-tile" data-i="2">
+              <div className="ts-splash__demo-block" />
+              {/* Plank, sits on tile 2 until picked up */}
+              <div className="ts-splash__demo-plank" />
+            </div>
+            {/* Sailor sprite — walks left → right → middle, lifts/drops */}
+            <div className="ts-splash__demo-sailor">
+              <div className="ts-splash__demo-sailor-body" />
+              <div className="ts-splash__demo-sailor-held" />
+            </div>
+          </div>
+          <div className="ts-splash__demo-caption">{t('rule_collect')} · {t('rule_drop')}</div>
+        </div>
+
         {highScore > 0 && (
           <div className="ts-splash__best">
             <span className="ts-splash__best-label">BEST</span>
