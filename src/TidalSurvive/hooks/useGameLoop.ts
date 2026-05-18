@@ -6,7 +6,8 @@ import {
   PLAYER_SPEED_NORMAL, PLAYER_SPEED_CARRYING_HEAVY, PLAYER_SPEED_CARRYING_LIGHT,
   SHARK_DELAY_IN_WATER, GRACE_PERIOD,
   ITEM_SPAWN_INTERVAL_MIN, ITEM_SPAWN_INTERVAL_MAX, ITEM_MAX_ACTIVE,
-  ITEM_WEIGHTS, ITEM_PICKUP_RADIUS, PADDLE_TIDE_BUFFER, ITEM_DROP_HEIGHT,
+  ITEM_WEIGHTS, ITEM_PICKUP_RADIUS, PADDLE_TIDE_BUFFER,
+  ITEM_DRIFT_SPAWN_OFFSET, ITEM_DRIFT_SPEED, ITEM_DRIFT_PARK_DIST, ITEM_FLOAT_Y_OFFSET,
   SHARK_COUNT, SHARK_PATROL_SPEED, SHARK_LUNGE_SPEED, SHARK_KILL_RADIUS, SHARK_ORBIT_R,
   BIRD_COUNT, HEIGHT_BONUS, BOARD_DROWN_BUFFER, TIDE_EBB_PERIOD,
 } from '../constants';
@@ -176,6 +177,42 @@ export function createGameState(tutorialEnabled = false): GameRef {
   };
 }
 
+// Build a drifting item for the given target tile. Spawn point is computed
+// by extending the (origin → target tile) ray to ITEM_DRIFT_SPAWN_OFFSET
+// units OUTSIDE the playfield, so the item visibly drifts in from the open
+// water toward the island.
+function makeDriftItem(
+  id: number, kind: ItemKind,
+  targetCol: number, targetRow: number,
+  waterY: number,
+): Item {
+  const center = tileCenter(targetCol, targetRow);
+  // Outward direction from origin. If the target is at origin (center of
+  // grid), pick a random angle.
+  let ox = center.x, oz = center.z;
+  const r = Math.sqrt(ox * ox + oz * oz);
+  if (r < 0.01) {
+    const a = Math.random() * Math.PI * 2;
+    ox = Math.cos(a); oz = Math.sin(a);
+  } else {
+    ox /= r; oz /= r;
+  }
+  // Place spawn point beyond the target by SPAWN_OFFSET. World units.
+  const halfWorld = (GRID / 2) * TILE_SIZE;
+  const spawnRadius = halfWorld + ITEM_DRIFT_SPAWN_OFFSET;
+  const spawnX = ox * spawnRadius;
+  const spawnZ = oz * spawnRadius;
+  return {
+    id, kind,
+    position: new THREE.Vector3(spawnX, waterY + ITEM_FLOAT_Y_OFFSET, spawnZ),
+    col: targetCol, row: targetRow,
+    drifting: true,
+    targetX: center.x,
+    targetZ: center.z,
+    phase: Math.random() * Math.PI * 2,
+  };
+}
+
 function pickItemKind(): ItemKind {
   const total = ITEM_WEIGHTS.plank + ITEM_WEIGHTS.boulder + ITEM_WEIGHTS.paddle;
   let r = Math.random() * total;
@@ -273,21 +310,13 @@ export function useGameLoop({
     const center = tileCenter(d.playerCol, d.playerRow);
     d.playerPos.set(center.x, tileTopY(0), center.z);
 
-    // v1.3: starter plank — outside the tutorial flow, drop a guaranteed
-    // plank two tiles ahead of the player at game start. So the first thing
-    // the player does is interact with the loop, not stare at empty sand.
+    // v1.5: starter plank — drifts in from the water toward a tile near
+    // the player so the very first interaction is "go grab it".
     if (d.tutorialStep === 'done') {
       const startCol = Math.min(GRID - 1, d.playerCol + 2);
       const startRow = d.playerRow;
-      const cc = tileCenter(startCol, startRow);
-      d.items.push({
-        id: d.itemIdCounter++,
-        kind: 'plank',
-        position: new THREE.Vector3(cc.x, tileTopY(0) + 0.05 + ITEM_DROP_HEIGHT, cc.z),
-        col: startCol, row: startRow,
-        vy: 0, landed: false, landY: tileTopY(0) + 0.05,
-        phase: 0,
-      });
+      const waterY0 = WATER_BASE_Y; // game starts at waterLevel = 0
+      d.items.push(makeDriftItem(d.itemIdCounter++, 'plank', startCol, startRow, waterY0));
     }
 
     d.initialized = true;
@@ -496,70 +525,82 @@ export function useGameLoop({
           }
         }
       }
-      let col: number, row: number, stack: number;
+      let col: number, row: number;
       if (dryTiles.length > 0) {
         const pick = dryTiles[Math.floor(Math.random() * dryTiles.length)];
-        col = pick.col; row = pick.row; stack = pick.stack;
+        col = pick.col; row = pick.row;
       } else {
-        col = bestCol; row = bestRow; stack = maxStack;
+        col = bestCol; row = bestRow;
       }
-      const center = tileCenter(col, row);
       const kind = pickItemKind();
-      const landY = tileTopY(stack) + 0.05;
-      d.items.push({
-        id: d.itemIdCounter++,
-        kind,
-        position: new THREE.Vector3(center.x, landY + ITEM_DROP_HEIGHT, center.z),
-        col, row,
-        vy: 0,
-        landed: false,
-        landY,
-        phase: Math.random() * Math.PI * 2,
-      });
+      d.items.push(makeDriftItem(d.itemIdCounter++, kind, col, row, waterY));
     }
 
     // ===== TUTORIAL SCRIPTED PLANK (step 'pickup' guarantees a plank near player) =====
     if (d.tutorialStep === 'pickup' && d.tutorialItemId === null && d.items.length < ITEM_MAX_ACTIVE) {
-      // Place a plank 2 tiles in front of the player (or center area)
       const targetCol = Math.min(GRID - 1, Math.max(0, d.playerCol + 2));
       const targetRow = d.playerRow;
-      const cc = tileCenter(targetCol, targetRow);
       const id = d.itemIdCounter++;
-      d.items.push({
-        id, kind: 'plank',
-        position: new THREE.Vector3(cc.x, tileTopY(0) + 0.05 + ITEM_DROP_HEIGHT, cc.z),
-        col: targetCol, row: targetRow,
-        vy: 0, landed: false, landY: tileTopY(0) + 0.05,
-        phase: 0,
-      });
+      d.items.push(makeDriftItem(id, 'plank', targetCol, targetRow, waterY));
       d.tutorialItemId = id;
     }
 
-    // ===== ITEM PHYSICS =====
+    // ===== ITEM PHYSICS (drift + float) =====
     for (const it of d.items) {
-      if (!it.landed) {
-        it.vy -= 28 * c;
-        it.position.y += it.vy * c;
-        const stackHere = d.heights[it.col][it.row];
-        const top = tileTopY(stackHere) + 0.05;
-        it.landY = top;
-        if (it.position.y <= it.landY) {
-          it.position.y = it.landY;
-          it.vy = 0;
-          it.landed = true;
-          // Subtle dust ring on land
-          pushRing(d, 'dust', it.position.x, it.position.y, it.position.z);
+      const yBob = Math.sin(d.time * 1.8 + it.phase) * 0.05;
+      if (it.drifting) {
+        // If the target tile drowned mid-drift, retarget to the nearest dry
+        // tile so the item doesn't park somewhere the player can't reach.
+        const targetStack = d.heights[it.col][it.row];
+        const targetTop = tileTopY(targetStack);
+        if (targetTop <= waterY + DROWN_MARGIN * 0.5) {
+          let bestDist = Infinity;
+          let bestCol = it.col, bestRow = it.row;
+          for (let cc = 0; cc < GRID; cc++) {
+            for (let rr = 0; rr < GRID; rr++) {
+              const top = tileTopY(d.heights[cc][rr]);
+              if (top <= waterY + DROWN_MARGIN * 0.5) continue;
+              const center = tileCenter(cc, rr);
+              const dx = center.x - it.position.x;
+              const dz = center.z - it.position.z;
+              const dist = dx * dx + dz * dz;
+              if (dist < bestDist) {
+                bestDist = dist;
+                bestCol = cc; bestRow = rr;
+              }
+            }
+          }
+          if (bestDist < Infinity) {
+            const newCenter = tileCenter(bestCol, bestRow);
+            it.col = bestCol; it.row = bestRow;
+            it.targetX = newCenter.x; it.targetZ = newCenter.z;
+          }
         }
-      } else {
-        it.position.y = it.landY + Math.sin(d.time * 2 + it.phase) * 0.02;
+
+        const dx = it.targetX - it.position.x;
+        const dz = it.targetZ - it.position.z;
+        const dist = Math.sqrt(dx * dx + dz * dz);
+        if (dist < ITEM_DRIFT_PARK_DIST) {
+          it.drifting = false;
+          pushRing(d, 'splash', it.position.x, waterY + 0.05, it.position.z);
+        } else {
+          const nx = dx / dist;
+          const nz = dz / dist;
+          it.position.x += nx * ITEM_DRIFT_SPEED * c;
+          it.position.z += nz * ITEM_DRIFT_SPEED * c;
+        }
       }
+      it.position.y = waterY + ITEM_FLOAT_Y_OFFSET + yBob;
     }
 
     // ===== PICKUP =====
+    // v1.5: items can be picked up once parked (no longer drifting in). The
+    // player can pick up from any nearby position — they don't have to be
+    // standing on the same tile. ITEM_PICKUP_RADIUS is the leash.
     if (!d.carrying && d.time > GRACE_PERIOD * 0.3) {
       for (let i = d.items.length - 1; i >= 0; i--) {
         const it = d.items[i];
-        if (!it.landed) continue;
+        if (it.drifting) continue;
         const dx = it.position.x - d.playerPos.x;
         const dz = it.position.z - d.playerPos.z;
         if (Math.sqrt(dx * dx + dz * dz) < ITEM_PICKUP_RADIUS) {

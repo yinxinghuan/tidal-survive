@@ -60,10 +60,23 @@ export const ITEM_MAX_ACTIVE = 6;
 // because it's the only "panic button" out of a tide and was too rare to land.
 export const ITEM_WEIGHTS = { plank: 6, boulder: 3, paddle: 2 };
 export const PADDLE_TIDE_BUFFER = 5.0; // seconds added to nextTide on pickup
-export const ITEM_PICKUP_RADIUS = 1.1;
+// v1.5: 1.1 → 1.5. Items now park at the tile center but float on water — the
+// player stands on the tile top (~0.3 units higher). The wider radius makes
+// "stand on the same tile" feel forgiving and lets the player pluck items
+// off an adjacent edge without precision.
+export const ITEM_PICKUP_RADIUS = 1.5;
 
-// Item drop visual — items fall onto the highest tile under spawn col/row.
-export const ITEM_DROP_HEIGHT = 12;
+// v1.5: items drift in from the water rather than dropping from the sky.
+// Spawn distance OUTSIDE the playfield in world units (so they're visible at
+// spawn but a beat away from being grabbed).
+export const ITEM_DRIFT_SPAWN_OFFSET = 4.5;
+// World-units / second drift speed toward the target tile edge.
+export const ITEM_DRIFT_SPEED = 2.0;
+// How close (in world units) the item gets to its target before it parks
+// and starts the idle bob.
+export const ITEM_DRIFT_PARK_DIST = 0.45;
+// Vertical offset above the water surface for floating items.
+export const ITEM_FLOAT_Y_OFFSET = 0.18;
 
 // Sharks
 export const SHARK_COUNT = 3;

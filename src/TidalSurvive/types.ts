@@ -13,17 +13,19 @@ export type ItemKind = 'plank' | 'boulder' | 'paddle';
 export interface Item {
   id: number;
   kind: ItemKind;
-  // World-space position. y animates from spawn height down to landing y.
+  // World-space position. y tracks the water surface (item floats).
   position: THREE.Vector3;
-  // Grid coords of the landing tile (set on spawn).
+  // Grid coords of the target tile the item drifts toward.
   col: number;
   row: number;
-  // Vertical velocity (drop-in physics).
-  vy: number;
-  // Once landed (touches stack top), held position is locked here.
-  landed: boolean;
-  landY: number;
-  // Tiny rotation phase for "barely floating" idle bob.
+  // Drift mode — true while the item is moving toward its target tile.
+  // Once false, the item is "parked" at the tile edge and bobs in place,
+  // available for pickup.
+  drifting: boolean;
+  // Where the item is heading in world space (x,z of the target tile edge).
+  targetX: number;
+  targetZ: number;
+  // Random phase for idle bob.
   phase: number;
 }
 

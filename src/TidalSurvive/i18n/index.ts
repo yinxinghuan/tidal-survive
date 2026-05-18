@@ -9,7 +9,7 @@ function detectLocale(): Locale {
 const dict: Record<Locale, Record<string, string>> = {
   zh: {
     title: 'Tidal Survive',
-    subtitle: '潮水每 5 秒上涨。垒高、活下去。',
+    subtitle: '潮水涨落，建材随浪漂来。垒高、活下去。',
     tap_to_start: '开始求生',
     again: '再来一次',
     score: '得分',
@@ -22,13 +22,13 @@ const dict: Record<Locale, Record<string, string>> = {
     rule_drop:    '回到脚下的格子自动放下，垒高它',
     rule_dodge:   '入水超过 2 秒，鲨鱼就来',
     tut_move:     '拖动屏幕任意位置开始移动',
-    tut_pickup:   '走到木板上 — 自动捡起',
+    tut_pickup:   '木板正漂过来 — 走过去自动捡起',
     tut_drop:     '走到金光柱位置，轻点屏幕放下',
     tut_tide:     '潮水正在上涨 — 垒高才能活下去',
   },
   en: {
     title: 'Tidal Survive',
-    subtitle: 'TIDE RISES EVERY 5s · STACK UP · STAY DRY',
+    subtitle: 'TIDES RISE AND EBB · DEBRIS DRIFTS IN · STACK UP',
     tap_to_start: 'Start',
     again: 'Try again',
     score: 'Score',
@@ -41,7 +41,7 @@ const dict: Record<Locale, Record<string, string>> = {
     rule_drop:    'Drop on your tile to raise its height',
     rule_dodge:   '2s in water → shark bite',
     tut_move:     'DRAG ANYWHERE TO MOVE',
-    tut_pickup:   'WALK ONTO THE PLANK — AUTO PICK UP',
+    tut_pickup:   'A PLANK IS DRIFTING IN — WALK TO IT',
     tut_drop:     'WALK TO THE BEACON · TAP TO DROP',
     tut_tide:     'WATER IS RISING — STACK TO STAY DRY',
   },
