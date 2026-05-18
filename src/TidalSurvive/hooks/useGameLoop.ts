@@ -553,28 +553,61 @@ export function useGameLoop({
     }
 
     // ===== SHARK AI =====
+    // Find the nearest shark to the player — only that one is allowed to
+    // lunge. Others keep patrolling so the threat is directional, not 360°.
+    let nearestSharkId = -1;
+    if (inWater && beyondStart && d.inWaterTime > SHARK_DELAY_IN_WATER) {
+      let nearestDist = Infinity;
+      for (const s of d.sharks) {
+        const dx = d.playerPos.x - s.position.x;
+        const dz = d.playerPos.z - s.position.z;
+        const dist = dx * dx + dz * dz;
+        if (dist < nearestDist) {
+          nearestDist = dist;
+          nearestSharkId = s.id;
+        }
+      }
+    }
+
     for (const s of d.sharks) {
       s.position.y = waterY - 0.25;
-      if (inWater && beyondStart) {
+      // The countdown phase (inWaterTime ≤ SHARK_DELAY) is a "look but don't
+      // approach" window — sharks stay on their orbit, only their rotation
+      // turns toward the player. This gives the player a real chance to swim
+      // back to dry land within the 2s.
+      const inCountdown = inWater && beyondStart && d.inWaterTime > 0 && d.inWaterTime <= SHARK_DELAY_IN_WATER;
+      const isLungingShark = s.id === nearestSharkId;
+
+      if (isLungingShark) {
+        // Lunge: head straight for player at SHARK_LUNGE_SPEED
         const dx = d.playerPos.x - s.position.x;
         const dz = d.playerPos.z - s.position.z;
         const dist = Math.sqrt(dx * dx + dz * dz);
         if (dist > 0.001) {
-          const sp = d.inWaterTime > SHARK_DELAY_IN_WATER ? SHARK_LUNGE_SPEED : SHARK_PATROL_SPEED * 1.4;
-          s.position.x += (dx / dist) * sp * c;
-          s.position.z += (dz / dist) * sp * c;
+          s.position.x += (dx / dist) * SHARK_LUNGE_SPEED * c;
+          s.position.z += (dz / dist) * SHARK_LUNGE_SPEED * c;
           s.rotation = Math.atan2(dx, dz);
           s.lunging = true;
         }
       } else {
+        // Patrol — keep walking the orbit ring
         s.orbit.phase += (SHARK_PATROL_SPEED / s.orbit.r) * c;
         const tx = s.orbit.cx + Math.cos(s.orbit.phase) * s.orbit.r;
         const tz = s.orbit.cz + Math.sin(s.orbit.phase) * s.orbit.r;
         s.position.x += (tx - s.position.x) * Math.min(1, c * 2);
         s.position.z += (tz - s.position.z) * Math.min(1, c * 2);
-        const tangent = s.orbit.phase + Math.PI / 2;
-        s.rotation = Math.atan2(Math.cos(tangent), Math.sin(tangent));
-        s.lunging = false;
+        // During the countdown, the nearest shark visibly *turns* toward the
+        // player even though it isn't closing distance — readable telegraph.
+        if (inCountdown) {
+          const dx = d.playerPos.x - s.position.x;
+          const dz = d.playerPos.z - s.position.z;
+          s.rotation = Math.atan2(dx, dz);
+          s.lunging = false;
+        } else {
+          const tangent = s.orbit.phase + Math.PI / 2;
+          s.rotation = Math.atan2(Math.cos(tangent), Math.sin(tangent));
+          s.lunging = false;
+        }
       }
     }
 

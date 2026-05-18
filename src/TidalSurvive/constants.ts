@@ -47,12 +47,16 @@ export const ITEM_DROP_HEIGHT = 12;
 // Sharks
 export const SHARK_COUNT = 3;
 export const SHARK_PATROL_SPEED = 2.6;
-export const SHARK_LUNGE_SPEED = 9;     // when player has been in water > SHARK_DELAY
-export const SHARK_FIN_HEIGHT = 0.18;   // how high above water the fin pokes
+// Lunge speed used when the player has been in water past SHARK_DELAY.
+// Tuned down from 9 → 5 in v1.2 so the player has reaction time after the
+// countdown expires. At a typical 8-unit distance that's ~1.6s to reach.
+export const SHARK_LUNGE_SPEED = 5;
+export const SHARK_FIN_HEIGHT = 0.18;
 export const SHARK_KILL_RADIUS = 1.3;
-// Patrol orbit radius — kept just outside the island so the fins are always
-// visible in the camera frame.
-export const SHARK_ORBIT_R = PLAYFIELD * 0.55;
+// Patrol orbit radius — pushed further out in v1.2 (0.55 → 0.70) so the
+// safety buffer between the orbit and the island is bigger. The player can
+// see fins from afar but they don't crowd the playfield.
+export const SHARK_ORBIT_R = PLAYFIELD * 0.70;
 
 // Camera — same downward tilt as Penguin Rescue but pulled in further for the
 // smaller playfield (PR was 30, we're 24). Zoom can lift slightly as the
@@ -67,12 +71,22 @@ export const HEIGHT_BONUS = 10;
 export const COLORS = {
   sand:       '#e6cf9c',
   sandShadow: '#c8ad75',
-  sandWet:    '#b89867',
-  rock:       '#8a8278',
-  rockDark:   '#56504a',
+  sandWet:    '#7a8aa0',     // tile that is currently submerged (water > top)
+  // Stack-layer palette by height (h-1 = layer index since base is sand)
+  layer1:     '#d6a86b',     // sandstone — 1 layer above ground
+  layer2:     '#8a8278',     // weathered stone
+  layer3:     '#56504a',     // dark granite
+  layerHigh:  '#3a352f',     // anything deeper
+  rock:       '#8a8278',     // legacy alias
+  rockDark:   '#56504a',     // legacy alias
+  // Water + foam
   water:      '#1d4564',
   waterDeep:  '#0b2438',
   waterFoam:  '#cfe6f3',
+  foamLine:   '#e8f3fb',     // breaking-waves line at island edge
+  // Player tile halo
+  playerHalo: '#ffe17a',
+  // Items / actors
   plank:      '#a86a3a',
   plankDark:  '#7a4823',
   boulder:    '#6e6660',
@@ -81,11 +95,15 @@ export const COLORS = {
   paddleBlade: '#8c5e34',
   shark:      '#3a4a55',
   sharkBelly: '#bcc6cd',
+  sharkWake:  '#cfe6f3',
   sailorJacket: '#ff8b3a',
   sailorJacketDark: '#c25e1c',
   sailorPants: '#21314a',
   sailorSkin: '#f0c9a3',
 };
+
+// How deep below WATER_BASE_Y a fully-sunk drowned tile rests.
+export const TILE_SINK_DEPTH = 1.2;
 
 // Bird silhouettes count (ambient)
 export const BIRD_COUNT = 5;

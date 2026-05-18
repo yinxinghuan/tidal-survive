@@ -8,6 +8,9 @@ import { ItemMesh } from './ItemMesh';
 import { Tile } from './Tile';
 import { Water } from './Water';
 import { Birds } from './Birds';
+import { FoamEdge } from './FoamEdge';
+import { Weather } from './Weather';
+import { Perimeter } from './Perimeter';
 import { useGameLoop, GameRef, tileCenter } from '../hooks/useGameLoop';
 import type { ItemKind, Stick } from '../types';
 
@@ -284,6 +287,9 @@ export function Scene({
 
       <GridTerrain state={state} />
       <Water stateRef={state} />
+      <FoamEdge stateRef={state} />
+      <Perimeter stateRef={state} />
+      <Weather stateRef={state} />
       <Birds stateRef={state} />
       <ActorSync state={state} carryingRef={carryingRef} />
       <RingFX state={state} />
