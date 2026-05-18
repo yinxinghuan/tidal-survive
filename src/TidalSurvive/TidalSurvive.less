@@ -148,6 +148,20 @@
       }
       .ts__tidebar-secs { color: #ffe17a; }
     }
+    // EBB state — next tide will LOWER the water. Green to signal relief.
+    &--ebb {
+      border-color: rgba(120, 230, 150, .55);
+      .ts__tidebar-label { color: #8aff9d; letter-spacing: .15em; }
+      .ts__tidebar-fill {
+        background: linear-gradient(90deg, #2ec070 0%, #8aff9d 100%);
+        box-shadow: 0 0 16px rgba(60, 200, 100, .9);
+      }
+      .ts__tidebar-secs { color: #8aff9d; }
+    }
+    // When ebb + warn collide (final 1.5s before ebb), the relief glow wins.
+    &--ebb&--warn {
+      animation: ts-tide-warn-ebb 0.5s ease-in-out infinite alternate;
+    }
   }
 
   // ===== READY / GO ritual =====
@@ -387,6 +401,10 @@
 @keyframes ts-tide-warn {
   0%   { transform: translateX(-50%) scale(1.0); box-shadow: 0 0 8px rgba(255, 170, 70, .4); }
   100% { transform: translateX(-50%) scale(1.05); box-shadow: 0 0 26px rgba(255, 170, 70, .85); }
+}
+@keyframes ts-tide-warn-ebb {
+  0%   { transform: translateX(-50%) scale(1.0); box-shadow: 0 0 8px rgba(60, 200, 100, .45); }
+  100% { transform: translateX(-50%) scale(1.04); box-shadow: 0 0 26px rgba(60, 200, 100, .9); }
 }
 
 @keyframes ts-ritual-ready {

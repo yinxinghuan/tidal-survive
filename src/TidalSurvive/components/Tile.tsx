@@ -68,6 +68,8 @@ export function Tile({
   const rootRef = useRef<THREE.Group>(null);
   const haloRef = useRef<THREE.Mesh>(null);
   const haloMatRef = useRef<THREE.MeshBasicMaterial>(null);
+  const fleeRef = useRef<THREE.Mesh>(null);
+  const fleeMatRef = useRef<THREE.MeshBasicMaterial>(null);
   const tintRef = useRef<THREE.MeshStandardMaterial>(null);
   const drownPhase = useRef(0); // 0 = dry, 1 = fully sunk
 
@@ -98,6 +100,18 @@ export function Tile({
       m.g += (targetG / 255 - m.g) * 0.18;
       m.b += (targetB / 255 - m.b) * 0.18;
       haloRef.current.position.y = myTop + 0.02;
+    }
+
+    // "Flee here" halo — when the player is in water and THIS tile is the
+    // nearest dry one, pulse a white ring on top so they can see where to go.
+    if (fleeMatRef.current && fleeRef.current) {
+      const isFlee = !!d.nearestDryWhileWet
+        && d.nearestDryWhileWet.col === col
+        && d.nearestDryWhileWet.row === row;
+      const pulse = 0.55 + Math.sin(d.time * 6) * 0.35;
+      const target = isFlee ? pulse : 0;
+      fleeMatRef.current.opacity += (target - fleeMatRef.current.opacity) * 0.18;
+      fleeRef.current.position.y = myTop + 0.04;
     }
 
     // Top-layer wet tint — once 50% drowned, dim the top layer toward sandWet.
@@ -148,10 +162,16 @@ export function Tile({
           stateRef={stateRef}
         />
       )}
-      {/* Player tile halo — gold ring drawn slightly above the current top */}
+      {/* Player tile halo — gold ring (or cyan when carrying) on the current top */}
       <mesh ref={haloRef} rotation={[-Math.PI / 2, 0, 0]} position={[0, GROUND_Y + 0.02, 0]}>
         <ringGeometry args={[TILE_SIZE * 0.38, TILE_SIZE * 0.46, 32]} />
         <meshBasicMaterial ref={haloMatRef} color={COLORS.playerHalo} transparent opacity={0} side={THREE.DoubleSide} />
+      </mesh>
+      {/* "Flee to me" white ring — appears on the nearest dry tile when the
+          player is in water. Always rendered, opacity driven by useFrame. */}
+      <mesh ref={fleeRef} rotation={[-Math.PI / 2, 0, 0]} position={[0, GROUND_Y + 0.04, 0]}>
+        <ringGeometry args={[TILE_SIZE * 0.30, TILE_SIZE * 0.36, 32]} />
+        <meshBasicMaterial ref={fleeMatRef} color="#ffffff" transparent opacity={0} side={THREE.DoubleSide} />
       </mesh>
     </group>
   );

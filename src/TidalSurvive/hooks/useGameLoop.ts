@@ -8,7 +8,7 @@ import {
   ITEM_SPAWN_INTERVAL_MIN, ITEM_SPAWN_INTERVAL_MAX, ITEM_MAX_ACTIVE,
   ITEM_WEIGHTS, ITEM_PICKUP_RADIUS, PADDLE_TIDE_BUFFER, ITEM_DROP_HEIGHT,
   SHARK_COUNT, SHARK_PATROL_SPEED, SHARK_LUNGE_SPEED, SHARK_KILL_RADIUS, SHARK_ORBIT_R,
-  BIRD_COUNT, HEIGHT_BONUS, BOARD_DROWN_BUFFER,
+  BIRD_COUNT, HEIGHT_BONUS, BOARD_DROWN_BUFFER, TIDE_EBB_PERIOD,
 } from '../constants';
 import type { Item, ItemKind, Shark, Bird, Stick, Pellet, DustRing, TutorialStep } from '../types';
 
@@ -60,6 +60,11 @@ export interface GameRef {
   nextTideAt: number;           // game time when level will increment next
   inWaterTime: number;          // seconds player has been in water (resets when dry)
   tideWarnPlayed: number;       // last warn level we already played a rumble for
+  tideEventCount: number;       // counts every tide event fired since start
+  isUpcomingEbb: boolean;       // true if the *next* tide will be an ebb (-1)
+  // Cached "nearest dry tile" while player is in water — drives the white halo
+  // hint so the player can see where to flee. {col, row, dist} or null if dry.
+  nearestDryWhileWet: { col: number; row: number } | null;
 
   // Camera shake — additive offsets applied by FollowCamera (decays each frame)
   shakeX: number;
@@ -138,6 +143,9 @@ export function createGameState(tutorialEnabled = false): GameRef {
     nextTideAt: TIDE_INTERVAL,
     inWaterTime: 0,
     tideWarnPlayed: -1,
+    tideEventCount: 0,
+    isUpcomingEbb: false,
+    nearestDryWhileWet: null,
     shakeX: 0, shakeY: 0, shakeZ: 0,
     tideDipPhase: 0, tideDipMag: 0,
     items: [],
@@ -322,34 +330,48 @@ export function useGameLoop({
     // clock runs so the first tide event can fire and the lesson lands.
     const tideClockRunning = d.tutorialStep === 'done' || d.tutorialStep === 'tide';
     if (tideClockRunning) {
-      const upcomingLevel = d.waterLevelTarget + 1;
+      // Determine whether the upcoming tide event will be an EBB (-1) or a
+      // rise (+1). Pattern: every TIDE_EBB_PERIOD-th event is an ebb.
+      // tideEventCount = number that have already fired, so the upcoming one
+      // is the (count+1)-th. If (count+1) % TIDE_EBB_PERIOD === 0 → ebb.
+      const upcomingIsEbb =
+        (d.tideEventCount + 1) % TIDE_EBB_PERIOD === 0 &&
+        d.waterLevelTarget > 0;  // never ebb below 0
+      d.isUpcomingEbb = upcomingIsEbb;
+      // Warn 1.5s before; use the event count as the "level" identifier so
+      // we play warn exactly once per upcoming event.
+      const upcomingId = d.tideEventCount + 1;
       if (
-        d.tideWarnPlayed !== upcomingLevel &&
+        d.tideWarnPlayed !== upcomingId &&
         d.nextTideAt - d.time <= TIDE_WARN_LEAD &&
         d.nextTideAt - d.time > 0
       ) {
-        d.tideWarnPlayed = upcomingLevel;
+        d.tideWarnPlayed = upcomingId;
         playSfx('tide_warn');
       }
 
       if (d.time >= d.nextTideAt) {
-        d.waterLevelTarget += 1;
+        const delta = upcomingIsEbb ? -1 : 1;
+        d.waterLevelTarget = Math.max(0, d.waterLevelTarget + delta);
+        d.tideEventCount += 1;
         d.nextTideAt += TIDE_INTERVAL;
-        playSfx('tide_rise');
+        playSfx(upcomingIsEbb ? 'paddle' : 'tide_rise'); // ebb plays the cheery paddle cue
         onTideEvent?.();
         pushRing(d, 'tide', 0, WATER_BASE_Y + d.waterLevelTarget * WATER_Y_PER_LEVEL, 0);
         d.tideDipPhase = 0.001;
-        d.tideDipMag = 0.45;
-        shake(d, 0.25);
+        d.tideDipMag = upcomingIsEbb ? 0.25 : 0.45;
+        shake(d, upcomingIsEbb ? 0.10 : 0.25);
         haptic?.('light');
       }
     } else {
       d.nextTideAt += c;
     }
 
-    // Lerp water level toward target (smooth visual rise)
+    // Lerp water level toward target — covers BOTH rise and ebb directions.
     if (d.waterLevel < d.waterLevelTarget) {
       d.waterLevel = Math.min(d.waterLevelTarget, d.waterLevel + c * 1.2);
+    } else if (d.waterLevel > d.waterLevelTarget) {
+      d.waterLevel = Math.max(d.waterLevelTarget, d.waterLevel - c * 1.2);
     }
 
     // ===== CAMERA SHAKE / DIP DECAY =====
@@ -419,6 +441,29 @@ export function useGameLoop({
       d.lastHeartbeatAt = d.time;
     }
 
+    // ===== NEAREST DRY TILE while in water — drives the "where to flee" halo =====
+    if (inWater) {
+      let bestDist = Infinity;
+      let bestCol = -1, bestRow = -1;
+      for (let cc = 0; cc < GRID; cc++) {
+        for (let rr = 0; rr < GRID; rr++) {
+          const top = tileTopY(d.heights[cc][rr]);
+          if (top <= waterY + DROWN_MARGIN * 0.5) continue; // wet
+          const center = tileCenter(cc, rr);
+          const dx = center.x - d.playerPos.x;
+          const dz = center.z - d.playerPos.z;
+          const dist = dx * dx + dz * dz;
+          if (dist < bestDist) {
+            bestDist = dist;
+            bestCol = cc; bestRow = rr;
+          }
+        }
+      }
+      d.nearestDryWhileWet = bestCol >= 0 ? { col: bestCol, row: bestRow } : null;
+    } else {
+      d.nearestDryWhileWet = null;
+    }
+
     // ===== FOOTFALL on dry ground (throttled, only when actually moving) =====
     if (!inWater && stick.active && Math.hypot(stick.x, stick.y) > 0.4) {
       const interval = d.carrying === 'boulder' ? 0.55 : 0.38;
@@ -429,18 +474,34 @@ export function useGameLoop({
     }
 
     // ===== ITEM SPAWN =====
-    // Tutorial steps own their own spawns (scripted plank). Random spawns only
-    // resume once the tutorial is done (or it was never on).
+    // v1.4: collect ALL currently-dry tiles, then pick one uniformly. If
+    // every tile is flooded, fall back to the highest-stack tile (driest
+    // available). Previous "random + retry up to 20" was failing in the
+    // late game because most tiles are wet and the loop terminated on a
+    // wet tile, dropping items into the ocean.
     if (d.time >= d.nextItemSpawnAt && d.items.length < ITEM_MAX_ACTIVE && d.tutorialStep === 'done') {
       d.nextItemSpawnAt = d.time + ITEM_SPAWN_INTERVAL_MIN + Math.random() * (ITEM_SPAWN_INTERVAL_MAX - ITEM_SPAWN_INTERVAL_MIN);
-      let tries = 0;
-      let col = 0, row = 0, stack = 0;
-      while (tries++ < 20) {
-        col = Math.floor(Math.random() * GRID);
-        row = Math.floor(Math.random() * GRID);
-        stack = d.heights[col][row];
-        const top = tileTopY(stack);
-        if (top > waterY - DROWN_MARGIN) break;
+      const dryTiles: { col: number; row: number; stack: number }[] = [];
+      let maxStack = -1;
+      let bestCol = 0, bestRow = 0;
+      for (let cc = 0; cc < GRID; cc++) {
+        for (let rr = 0; rr < GRID; rr++) {
+          const stack = d.heights[cc][rr];
+          const top = tileTopY(stack);
+          if (top > waterY + DROWN_MARGIN * 0.5) {
+            dryTiles.push({ col: cc, row: rr, stack });
+          }
+          if (stack > maxStack) {
+            maxStack = stack; bestCol = cc; bestRow = rr;
+          }
+        }
+      }
+      let col: number, row: number, stack: number;
+      if (dryTiles.length > 0) {
+        const pick = dryTiles[Math.floor(Math.random() * dryTiles.length)];
+        col = pick.col; row = pick.row; stack = pick.stack;
+      } else {
+        col = bestCol; row = bestRow; stack = maxStack;
       }
       const center = tileCenter(col, row);
       const kind = pickItemKind();

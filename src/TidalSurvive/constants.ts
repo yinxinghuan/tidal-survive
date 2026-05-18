@@ -34,13 +34,21 @@ export const DROWN_MARGIN = 0.08;
 // "wading in panic" window before the board hard-overs them.
 export const BOARD_DROWN_BUFFER = TILE_THICKNESS * 1.0;
 
+// v1.4: tide ebb cycle. Every Nth tide event REDUCES the water level by 1
+// instead of raising it — gives the player a breather and matches the real
+// physics of tides ("Tidal Survive" should literally have tides).
+// Pattern: +1, +1, -1, +1, +1, -1, ... so net rise is +1 level per 3 events.
+// The first ebb fires on tide #3, the next on tide #6, etc.
+export const TIDE_EBB_PERIOD = 3;
+
 // Player
 export const PLAYER_SPEED_NORMAL = 8.0;
 export const PLAYER_SPEED_CARRYING_HEAVY = 4.5; // boulder
 export const PLAYER_SPEED_CARRYING_LIGHT = 7.2; // plank / paddle
 export const PLAYER_RADIUS = 0.5;
-// 2 seconds in water → shark bites
-export const SHARK_DELAY_IN_WATER = 2.0;
+// v1.4: 2 → 3s — give the player a real beat to spot the nearest dry tile and
+// sprint there before the shark commits to its lunge.
+export const SHARK_DELAY_IN_WATER = 3.0;
 // Grace at game start
 export const GRACE_PERIOD = 1.5;
 
@@ -61,9 +69,9 @@ export const ITEM_DROP_HEIGHT = 12;
 export const SHARK_COUNT = 3;
 export const SHARK_PATROL_SPEED = 2.6;
 // Lunge speed used when the player has been in water past SHARK_DELAY.
-// Tuned down from 9 → 5 in v1.2 so the player has reaction time after the
-// countdown expires. At a typical 8-unit distance that's ~1.6s to reach.
-export const SHARK_LUNGE_SPEED = 5;
+// v1.2 dropped 9→5; v1.4 drops 5→4 because the player usually enters water
+// right next to the nearest shark — at 5 the bite hit at ~0.8s post-grace.
+export const SHARK_LUNGE_SPEED = 4;
 export const SHARK_FIN_HEIGHT = 0.18;
 export const SHARK_KILL_RADIUS = 1.3;
 // Patrol orbit radius — pushed further out in v1.2 (0.55 → 0.70) so the

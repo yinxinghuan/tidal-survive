@@ -31,6 +31,7 @@ export function TidalSurvive() {
   const [tidePulse, setTidePulse] = useState(0);
   const [tideCountdown, setTideCountdown] = useState(TIDE_INTERVAL);
   const [tideWarn, setTideWarn] = useState(false);
+  const [tideEbb, setTideEbb] = useState(false);
   const [sharkCountdown, setSharkCountdown] = useState<number | null>(null);
   const [startRitual, setStartRitual] = useState<'idle' | 'ready' | 'go' | 'done'>('done');
   const [tutorialStep, setTutorialStep] = useState<'move' | 'pickup' | 'drop' | 'tide' | 'done'>('done');
@@ -99,6 +100,7 @@ export function TidalSurvive() {
       const remaining = Math.max(0, d.nextTideAt - d.time);
       setTideCountdown(remaining);
       setTideWarn(d.tutorialStep === 'done' && remaining > 0 && remaining <= TIDE_WARN_LEAD);
+      setTideEbb(d.isUpcomingEbb);
       // Shark countdown: seconds until shark bites, while in water
       if (d.inWaterTime > 0.05 && !d.gameOver) {
         const remain = SHARK_DELAY_IN_WATER - d.inWaterTime;
@@ -173,10 +175,10 @@ export function TidalSurvive() {
           doesn't pre-empt the lesson, then revealed for the 'tide' step. */}
       {phase === 'playing' && (tutorialStep === 'tide' || tutorialStep === 'done') && (
         <div
-          className={`ts__tidebar ${tideWarn ? 'ts__tidebar--warn' : ''} ${tidePulse % 2 === 0 ? 'ts__tidebar--a' : 'ts__tidebar--b'}`}
+          className={`ts__tidebar ${tideWarn ? 'ts__tidebar--warn' : ''} ${tideEbb ? 'ts__tidebar--ebb' : ''} ${tidePulse % 2 === 0 ? 'ts__tidebar--a' : 'ts__tidebar--b'}`}
           key={tidePulse}
         >
-          <div className="ts__tidebar-label">{tideWarn ? 'TIDE!' : 'NEXT TIDE'}</div>
+          <div className="ts__tidebar-label">{tideEbb ? 'EBB ↓' : (tideWarn ? 'TIDE!' : 'NEXT TIDE')}</div>
           <div className="ts__tidebar-track">
             <div className="ts__tidebar-fill" style={{ width: `${tideFraction * 100}%` }} />
           </div>
