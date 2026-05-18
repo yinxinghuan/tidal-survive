@@ -81,6 +81,46 @@ function noiseBurst(dur: number, peak: number, t0: number, lp = 2000, dst?: Audi
   src.stop(t0 + dur + 0.05);
 }
 
+// Bandpass-filtered noise burst — used for bubbles (high-Q narrow band) and
+// vocal-like grunts (lower wider band).
+function noiseBand(dur: number, peak: number, t0: number, centerHz: number, q: number) {
+  if (!ctx || !master) return;
+  const buf = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * dur), ctx.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  const filt = ctx.createBiquadFilter();
+  filt.type = 'bandpass';
+  filt.frequency.value = centerHz;
+  filt.Q.value = q;
+  const g = ctx.createGain();
+  envelope(g, peak, 0.003, dur, t0);
+  src.connect(filt).connect(g).connect(master);
+  src.start(t0);
+  src.stop(t0 + dur + 0.05);
+}
+
+// Single bubble pop — short bandpass blip with a quick frequency drop.
+function bubble(t0: number, centerHz: number, peak = 0.18) {
+  if (!ctx || !master) return;
+  const o = ctx.createOscillator();
+  o.type = 'sine';
+  o.frequency.setValueAtTime(centerHz * 1.5, t0);
+  o.frequency.exponentialRampToValueAtTime(centerHz * 0.6, t0 + 0.07);
+  const filt = ctx.createBiquadFilter();
+  filt.type = 'bandpass';
+  filt.frequency.value = centerHz;
+  filt.Q.value = 8;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0, t0);
+  g.gain.linearRampToValueAtTime(peak, t0 + 0.005);
+  g.gain.exponentialRampToValueAtTime(0.0008, t0 + 0.1);
+  o.connect(filt).connect(g).connect(master);
+  o.start(t0);
+  o.stop(t0 + 0.12);
+}
+
 // ---------- SFX ----------
 export function playSfx(key: SfxKey) {
   const c = ensureCtx();
@@ -89,28 +129,40 @@ export function playSfx(key: SfxKey) {
   const t = c.currentTime;
   switch (key) {
     case 'splash':
-      // Wet whoosh + short white burst
-      noiseBurst(0.35, 0.32, t, 3200);
-      tone(420, 'sine', 0.18, 0.12, t, 220);
+      // BUBBLES + low slosh. The voice should be unmistakably aqueous.
+      // 6 pop bubbles staggered + sub-100Hz body for the water mass.
+      tone(95, 'sine', 0.22, 0.18, t, 55);                  // low slosh
+      noiseBand(0.18, 0.12, t, 380, 0.6);                    // wet wash
+      bubble(t + 0.00, 900, 0.16);
+      bubble(t + 0.04, 1300, 0.14);
+      bubble(t + 0.09, 700, 0.18);
+      bubble(t + 0.14, 1600, 0.10);
+      bubble(t + 0.20, 1100, 0.12);
+      bubble(t + 0.27, 800, 0.08);
       break;
     case 'thunk':
-      // Wooden plank pickup — short low knock with mid woody body
-      tone(180, 'sine', 0.10, 0.30, t, 90);
-      tone(720, 'triangle', 0.06, 0.10, t, 480);
-      noiseBurst(0.05, 0.06, t, 1800);
+      // PLANK PICKUP — crisp wood TOCK. Single mid pluck, no body.
+      tone(320, 'triangle', 0.06, 0.30, t, 280);             // wood pluck
+      noiseBand(0.03, 0.10, t, 4500, 2.0);                   // dry brittle tick
       break;
     case 'plank_drop':
-      tone(120, 'sine', 0.18, 0.28, t, 60);
-      noiseBurst(0.10, 0.12, t, 1200);
+      // PLANK DROP — CLACK. Two-tap wood smack, mid-high register.
+      tone(380, 'square', 0.04, 0.30, t,        300);
+      tone(260, 'square', 0.05, 0.26, t + 0.05, 200);
+      noiseBand(0.04, 0.08, t, 3500, 1.4);
       break;
     case 'boulder_lift':
-      tone(95, 'sine', 0.32, 0.30, t, 70);
-      noiseBurst(0.22, 0.08, t, 900);
+      // BOULDER PICKUP — HEAVE grunt. Down-sweep saw + vocal-band noise.
+      tone(280, 'sawtooth', 0.22, 0.20, t, 150);
+      noiseBand(0.26, 0.12, t + 0.02, 380, 1.5);             // grunt body
+      tone(220, 'sawtooth', 0.18, 0.10, t + 0.06, 130);
       break;
     case 'thud':
-      // Heavy stone drop
-      tone(60, 'sine', 0.40, 0.46, t, 35);
-      noiseBurst(0.20, 0.20, t, 800);
+      // BOULDER DROP — deep THUMP. Sub-bass body + sharp crack on top.
+      tone(40, 'sine', 0.60, 0.55, t, 30);                   // sub
+      tone(110, 'triangle', 0.18, 0.35, t, 70);              // body
+      noiseBand(0.05, 0.20, t, 5500, 2.5);                   // crack
+      noiseBurst(0.30, 0.10, t + 0.03, 600);                 // long rumble tail
       break;
     case 'paddle':
       // Cheery upward chirp — "buffered!"

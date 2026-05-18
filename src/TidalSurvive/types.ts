@@ -27,6 +27,10 @@ export interface Item {
   targetZ: number;
   // Random phase for idle bob.
   phase: number;
+  // Next game-time at which this parked item should emit a small water
+  // ripple ring. Throttles the surface effect so floating items visibly
+  // displace water without spamming the renderer.
+  nextRippleAt: number;
 }
 
 export interface Shark {

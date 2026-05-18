@@ -94,6 +94,7 @@ export interface GameRef {
   // Times we last spawned a heartbeat / foot SFX so we can throttle them
   lastHeartbeatAt: number;
   lastFootAt: number;
+  lastWadeAt: number;       // last time we pushed a wading splash ring
 
   // Tap-drop signal: incremented by TidalSurvive.tsx when the joystick gesture
   // ends without significant travel. The game loop polls this counter each
@@ -160,6 +161,7 @@ export function createGameState(tutorialEnabled = false): GameRef {
     ringId: 1,
     lastHeartbeatAt: 0,
     lastFootAt: 0,
+    lastWadeAt: 0,
     tapDropPending: 0,
     tapDropConsumed: 0,
     startRitual: 'ready',
@@ -210,6 +212,7 @@ function makeDriftItem(
     targetX: center.x,
     targetZ: center.z,
     phase: Math.random() * Math.PI * 2,
+    nextRippleAt: 0,   // first ripple fires soon after parking
   };
 }
 
@@ -453,12 +456,26 @@ export function useGameLoop({
     if (inWater) {
       if (d.inWaterTime === 0 && beyondStart) {
         playSfx('splash');
+        // 3 concentric rings born ~0.06s apart so the splash visibly grows
+        // outward and lingers ~1s.
+        pushRing(d, 'splash', d.playerPos.x, waterY + 0.05, d.playerPos.z);
+        pushRing(d, 'splash', d.playerPos.x, waterY + 0.05, d.playerPos.z);
         pushRing(d, 'splash', d.playerPos.x, waterY + 0.05, d.playerPos.z);
       }
       d.inWaterTime += c;
+      // Continuous wading wake — small splash puff every ~0.25s while the
+      // player is moving. So you SEE that you're slogging through water.
+      if (stick.active && Math.hypot(stick.x, stick.y) > 0.3 &&
+          d.time > d.lastWadeAt + 0.25) {
+        d.lastWadeAt = d.time;
+        pushRing(d, 'splash', d.playerPos.x, waterY + 0.04, d.playerPos.z);
+      }
     } else {
       if (d.inWaterTime > 0.2 && beyondStart) {
+        // Exit splash — same 3-ring chain.
         playSfx('splash');
+        pushRing(d, 'splash', d.playerPos.x, waterY + 0.05, d.playerPos.z);
+        pushRing(d, 'splash', d.playerPos.x, waterY + 0.05, d.playerPos.z);
         pushRing(d, 'splash', d.playerPos.x, waterY + 0.05, d.playerPos.z);
       }
       d.inWaterTime = 0;
@@ -583,12 +600,18 @@ export function useGameLoop({
         if (dist < ITEM_DRIFT_PARK_DIST) {
           it.drifting = false;
           pushRing(d, 'splash', it.position.x, waterY + 0.05, it.position.z);
+          it.nextRippleAt = d.time + 1.2;
         } else {
           const nx = dx / dist;
           const nz = dz / dist;
           it.position.x += nx * ITEM_DRIFT_SPEED * c;
           it.position.z += nz * ITEM_DRIFT_SPEED * c;
         }
+      } else if (d.time >= it.nextRippleAt) {
+        // Parked floating item — periodic small ripple so the water surface
+        // visibly reacts to the object resting on it.
+        pushRing(d, 'splash', it.position.x, waterY + 0.04, it.position.z);
+        it.nextRippleAt = d.time + 1.5 + Math.random() * 0.8;
       }
       it.position.y = waterY + ITEM_FLOAT_Y_OFFSET + yBob;
     }

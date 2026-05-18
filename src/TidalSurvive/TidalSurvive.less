@@ -199,28 +199,34 @@
   }
 
   // ===== Shark countdown =====
+  // v1.6: moved from screen-center (was obscuring the player sprite while in
+  // water) to the top, just below the score chip. Smaller chip-style row
+  // with label+seconds side by side so it reads in a glance.
   &__shark-warn {
     position: absolute;
-    top: 50%;
+    top: calc(env(safe-area-inset-top, 8px) + 96px);
     left: 50%;
-    transform: translate(-50%, -110%);
+    transform: translateX(-50%);
     z-index: 11;
     pointer-events: none;
     background: rgba(120, 18, 18, .82);
     border: 1px solid rgba(255, 100, 100, .55);
     border-radius: 14px;
-    padding: 8px 18px 9px;
+    padding: 7px 16px 8px;
     box-shadow: 0 0 24px rgba(255, 60, 60, .55);
     font-family: 'JetBrains Mono', monospace;
     color: #ffd5d5;
     text-align: center;
     letter-spacing: .22em;
-    animation: ts-shark-pulse 0.5s ease-in-out infinite alternate;
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    animation: ts-shark-chip-pulse 0.5s ease-in-out infinite alternate;
 
     &--imminent {
       background: rgba(180, 24, 24, .92);
       border-color: rgba(255, 200, 200, .9);
-      animation: ts-shark-pulse-fast 0.18s ease-in-out infinite alternate;
+      animation: ts-shark-chip-pulse-fast 0.18s ease-in-out infinite alternate;
     }
 
     &-label {
@@ -230,10 +236,10 @@
     &-secs {
       font-family: 'Baloo 2', sans-serif;
       font-weight: 800;
-      font-size: 28px;
+      font-size: 20px;
       color: #fff;
       letter-spacing: 0;
-      line-height: 1.05;
+      line-height: 1.0;
     }
   }
 
@@ -420,13 +426,13 @@
   100% { opacity: 0; transform: scale(.9); }
 }
 
-@keyframes ts-shark-pulse {
-  0%   { transform: translate(-50%, -110%) scale(1.0); }
-  100% { transform: translate(-50%, -110%) scale(1.07); }
+@keyframes ts-shark-chip-pulse {
+  0%   { transform: translateX(-50%) scale(1.0); box-shadow: 0 0 12px rgba(255, 60, 60, .45); }
+  100% { transform: translateX(-50%) scale(1.05); box-shadow: 0 0 24px rgba(255, 60, 60, .85); }
 }
-@keyframes ts-shark-pulse-fast {
-  0%   { transform: translate(-50%, -110%) scale(1.0); }
-  100% { transform: translate(-50%, -110%) scale(1.18); }
+@keyframes ts-shark-chip-pulse-fast {
+  0%   { transform: translateX(-50%) scale(1.0); box-shadow: 0 0 12px rgba(255, 60, 60, .55); }
+  100% { transform: translateX(-50%) scale(1.13); box-shadow: 0 0 28px rgba(255, 100, 100, 1); }
 }
 
 @keyframes ts-pellet {
