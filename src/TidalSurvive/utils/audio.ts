@@ -1,0 +1,302 @@
+// Tidal Survive — procedural ocean ambience + SFX.
+// Public API matches Penguin Rescue: unlockAudio / playSfx / startBgm / stopBgm.
+
+type SfxKey =
+  | 'splash'        // step into water
+  | 'thunk'         // pick up plank
+  | 'thud'          // drop boulder
+  | 'plank_drop'    // drop plank
+  | 'boulder_lift'  // pick up boulder
+  | 'paddle'        // pick up paddle (tide buffer)
+  | 'tide_rise'     // water level +1
+  | 'shark_roar'    // shark lunge / kill
+  | 'gull_cry'      // ambient seagull
+  | 'game_over';
+
+let ctx: AudioContext | null = null;
+let master: GainNode | null = null;
+let bgmGain: GainNode | null = null;
+let bgmTimer: number | null = null;
+let bgmRunning = false;
+
+function ensureCtx(): AudioContext | null {
+  if (typeof window === 'undefined') return null;
+  if (!ctx) {
+    const AC: typeof AudioContext | undefined =
+      (window as any).AudioContext || (window as any).webkitAudioContext;
+    if (!AC) return null;
+    ctx = new AC();
+    master = ctx.createGain();
+    master.gain.value = 0.75;
+    master.connect(ctx.destination);
+  }
+  return ctx;
+}
+
+export async function unlockAudio() {
+  const c = ensureCtx();
+  if (c && c.state === 'suspended') await c.resume();
+}
+
+// ---------- helpers ----------
+function envelope(node: GainNode, peak: number, attack: number, decay: number, t0: number) {
+  node.gain.setValueAtTime(0, t0);
+  node.gain.linearRampToValueAtTime(peak, t0 + attack);
+  node.gain.exponentialRampToValueAtTime(0.0001, t0 + attack + decay);
+}
+
+function tone(freq: number, type: OscillatorType, dur: number, peak: number, t0: number, glideTo?: number, dst?: AudioNode) {
+  if (!ctx || !master) return;
+  const osc = ctx.createOscillator();
+  const g = ctx.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, t0);
+  if (glideTo !== undefined) osc.frequency.exponentialRampToValueAtTime(Math.max(20, glideTo), t0 + dur);
+  envelope(g, peak, 0.01, dur, t0);
+  osc.connect(g).connect(dst ?? master);
+  osc.start(t0);
+  osc.stop(t0 + dur + 0.05);
+}
+
+function noiseBurst(dur: number, peak: number, t0: number, lp = 2000, dst?: AudioNode) {
+  if (!ctx || !master) return;
+  const buf = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * dur), ctx.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  const filt = ctx.createBiquadFilter();
+  filt.type = 'lowpass';
+  filt.frequency.value = lp;
+  const g = ctx.createGain();
+  envelope(g, peak, 0.005, dur, t0);
+  src.connect(filt).connect(g).connect(dst ?? master);
+  src.start(t0);
+  src.stop(t0 + dur + 0.05);
+}
+
+// ---------- SFX ----------
+export function playSfx(key: SfxKey) {
+  const c = ensureCtx();
+  if (!c || !master) return;
+  if (c.state === 'suspended') c.resume();
+  const t = c.currentTime;
+  switch (key) {
+    case 'splash':
+      // Wet whoosh + short white burst
+      noiseBurst(0.35, 0.32, t, 3200);
+      tone(420, 'sine', 0.18, 0.12, t, 220);
+      break;
+    case 'thunk':
+      // Wooden plank pickup — short low knock with mid woody body
+      tone(180, 'sine', 0.10, 0.30, t, 90);
+      tone(720, 'triangle', 0.06, 0.10, t, 480);
+      noiseBurst(0.05, 0.06, t, 1800);
+      break;
+    case 'plank_drop':
+      tone(120, 'sine', 0.18, 0.28, t, 60);
+      noiseBurst(0.10, 0.12, t, 1200);
+      break;
+    case 'boulder_lift':
+      tone(95, 'sine', 0.32, 0.30, t, 70);
+      noiseBurst(0.22, 0.08, t, 900);
+      break;
+    case 'thud':
+      // Heavy stone drop
+      tone(60, 'sine', 0.40, 0.46, t, 35);
+      noiseBurst(0.20, 0.20, t, 800);
+      break;
+    case 'paddle':
+      // Cheery upward chirp — "buffered!"
+      tone(720, 'triangle', 0.10, 0.18, t, 1200);
+      tone(1200, 'triangle', 0.12, 0.14, t + 0.08, 1900);
+      break;
+    case 'tide_rise':
+      // Low whoosh — tide swelling up
+      noiseBurst(0.65, 0.22, t, 700);
+      tone(140, 'sine', 0.55, 0.16, t, 80);
+      break;
+    case 'shark_roar':
+      // Aggressive low growl + splash
+      tone(160, 'sawtooth', 0.32, 0.32, t, 70);
+      tone(80, 'square', 0.40, 0.18, t + 0.02, 50);
+      noiseBurst(0.42, 0.20, t, 1400);
+      break;
+    case 'gull_cry':
+      tone(1700, 'sawtooth', 0.10, 0.10, t, 1300);
+      tone(1400, 'sawtooth', 0.14, 0.10, t + 0.08, 1700);
+      tone(1900, 'sawtooth', 0.10, 0.08, t + 0.20, 1500);
+      break;
+    case 'game_over':
+      // Sinking / drowning chord
+      tone(660, 'sawtooth', 0.40, 0.20, t,          440);
+      tone(440, 'sawtooth', 0.50, 0.20, t + 0.20,   280);
+      tone(280, 'sawtooth', 0.70, 0.22, t + 0.50,   140);
+      noiseBurst(1.0, 0.18, t + 0.10, 800);
+      break;
+  }
+}
+
+// ---------- BGM ----------
+//
+// Tidal Survive BGM is a low ocean ambience with a slow swell envelope.
+// • Bass drone — sine pad at ~55 Hz with a 0.6 Hz LFO, very subtle
+// • Swell — filtered noise wash with a 12–24s breath envelope (per MEMORY rule:
+//   never a continuous drone — real silent gaps between swells)
+// • Distant melody — pentatonic minor (A-C-D-E-G), one note every 4-7s, slow
+// • Occasional bell tone for a "buoy" feel
+//
+// All voices route through bgmGain so volume + stop are unified.
+
+let bgmSwellTimer: number | null = null;
+let bgmMelodyTimer: number | null = null;
+
+const PENTA_MINOR = [0, 3, 5, 7, 10]; // A minor pentatonic (semitone offsets from A)
+const A_HZ = 220; // A3
+function semi(offset: number): number { return A_HZ * Math.pow(2, offset / 12); }
+
+function startDrone(volume: number) {
+  if (!ctx || !bgmGain) return;
+  // Two detuned sine pads + LFO on filter for a slow breathing low end.
+  const o1 = ctx.createOscillator();
+  o1.type = 'sine';
+  o1.frequency.value = 55;
+  const o2 = ctx.createOscillator();
+  o2.type = 'sine';
+  o2.frequency.value = 55.4; // tiny detune for movement
+  const filt = ctx.createBiquadFilter();
+  filt.type = 'lowpass';
+  filt.frequency.value = 220;
+  filt.Q.value = 0.4;
+  const lfo = ctx.createOscillator();
+  lfo.frequency.value = 0.07; // 14s period
+  const lfoGain = ctx.createGain();
+  lfoGain.gain.value = 90;
+  lfo.connect(lfoGain).connect(filt.frequency);
+  const g = ctx.createGain();
+  g.gain.value = volume * 0.55;
+  o1.connect(filt);
+  o2.connect(filt);
+  filt.connect(g).connect(bgmGain);
+  o1.start(); o2.start(); lfo.start();
+  // park for shutdown
+  (bgmGain as any).__drone__ = { o1, o2, lfo, g };
+}
+
+function scheduleSwell() {
+  if (!ctx || !bgmGain || !bgmRunning) return;
+  // One full swell cycle = rise (5-8s) → hold (8-16s) → fall (6-10s) → silence (7-16s)
+  const c = ctx;
+  const rise = 5 + Math.random() * 3;
+  const hold = 8 + Math.random() * 8;
+  const fall = 6 + Math.random() * 4;
+  const silence = 7 + Math.random() * 9;
+  const total = rise + hold + fall + silence;
+
+  // Build a long noise buffer for the swell body
+  const dur = rise + hold + fall;
+  const buf = c.createBuffer(1, Math.ceil(c.sampleRate * dur), c.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+  const src = c.createBufferSource();
+  src.buffer = buf;
+  const lp = c.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.value = 1200;
+  lp.Q.value = 0.5;
+  const hp = c.createBiquadFilter();
+  hp.type = 'highpass';
+  hp.frequency.value = 120;
+  const g = c.createGain();
+  const peak = 0.12 + Math.random() * 0.06;
+  const t0 = c.currentTime;
+  g.gain.setValueAtTime(0, t0);
+  g.gain.linearRampToValueAtTime(peak, t0 + rise);
+  g.gain.setValueAtTime(peak, t0 + rise + hold);
+  g.gain.linearRampToValueAtTime(0, t0 + rise + hold + fall);
+  src.connect(hp).connect(lp).connect(g).connect(bgmGain);
+  src.start(t0);
+  src.stop(t0 + dur + 0.1);
+
+  // Queue next swell after the full silence gap
+  bgmSwellTimer = window.setTimeout(scheduleSwell, total * 1000) as unknown as number;
+}
+
+function scheduleMelody() {
+  if (!ctx || !bgmGain || !bgmRunning) return;
+  const c = ctx;
+  // Pick a random pentatonic note, octave 4 or 5
+  const noteSm = PENTA_MINOR[Math.floor(Math.random() * PENTA_MINOR.length)] + (Math.random() < 0.4 ? 12 : 0);
+  const freq = semi(noteSm + 12); // up an octave overall
+
+  const o = c.createOscillator();
+  o.type = 'triangle';
+  o.frequency.value = freq;
+  const g = c.createGain();
+  const peak = 0.045 + Math.random() * 0.02;
+  const t = c.currentTime;
+  g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime(peak, t + 0.6);
+  g.gain.exponentialRampToValueAtTime(0.0006, t + 3.5);
+  // Soft delay for "across the bay" feel
+  const delay = c.createDelay(0.5);
+  delay.delayTime.value = 0.36;
+  const fb = c.createGain();
+  fb.gain.value = 0.28;
+  const wet = c.createGain();
+  wet.gain.value = 0.5;
+  o.connect(g);
+  g.connect(bgmGain);
+  g.connect(delay);
+  delay.connect(fb);
+  fb.connect(delay);
+  delay.connect(wet);
+  wet.connect(bgmGain);
+  o.start(t);
+  o.stop(t + 4.0);
+
+  // Next melody pluck after 4–7s
+  const next = 4 + Math.random() * 3;
+  bgmMelodyTimer = window.setTimeout(scheduleMelody, next * 1000) as unknown as number;
+}
+
+export function startBgm(volume = 0.08) {
+  const c = ensureCtx();
+  if (!c || !master) return;
+  if (c.state === 'suspended') c.resume();
+  stopBgm();
+
+  bgmGain = c.createGain();
+  bgmGain.gain.value = 0;
+  bgmGain.connect(master);
+  bgmGain.gain.linearRampToValueAtTime(volume, c.currentTime + 1.0);
+
+  bgmRunning = true;
+  startDrone(volume);
+  // First swell starts after a short delay so onset feels organic
+  bgmSwellTimer = window.setTimeout(scheduleSwell, 1200) as unknown as number;
+  bgmMelodyTimer = window.setTimeout(scheduleMelody, 3500) as unknown as number;
+
+  // Maintain a heartbeat so future-self can hook into BGM state if needed.
+  bgmTimer = window.setInterval(() => { /* idle */ }, 1000) as unknown as number;
+}
+
+export function stopBgm() {
+  bgmRunning = false;
+  if (bgmTimer !== null) { window.clearInterval(bgmTimer); bgmTimer = null; }
+  if (bgmSwellTimer !== null) { window.clearTimeout(bgmSwellTimer); bgmSwellTimer = null; }
+  if (bgmMelodyTimer !== null) { window.clearTimeout(bgmMelodyTimer); bgmMelodyTimer = null; }
+  if (bgmGain && ctx) {
+    const drone = (bgmGain as any).__drone__;
+    bgmGain.gain.cancelScheduledValues(ctx.currentTime);
+    bgmGain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.5);
+    const g = bgmGain;
+    setTimeout(() => {
+      if (drone) {
+        try { drone.o1.stop(); drone.o2.stop(); drone.lfo.stop(); } catch {}
+      }
+      g.disconnect();
+    }, 800);
+    bgmGain = null;
+  }
+}
