@@ -11,6 +11,7 @@ import { Birds } from './Birds';
 import { FoamEdge } from './FoamEdge';
 import { Weather } from './Weather';
 import { Perimeter } from './Perimeter';
+import { BubbleFX } from './BubbleFX';
 import { useGameLoop, GameRef, tileCenter } from '../hooks/useGameLoop';
 import type { ItemKind, Stick } from '../types';
 
@@ -293,6 +294,7 @@ export function Scene({
       <Birds stateRef={state} />
       <ActorSync state={state} carryingRef={carryingRef} />
       <RingFX state={state} />
+      <BubbleFX stateRef={state} />
       <DropTargetMarker state={state} />
     </>
   );

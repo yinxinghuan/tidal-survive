@@ -9,9 +9,9 @@ import {
   ITEM_WEIGHTS, ITEM_PICKUP_RADIUS, PADDLE_TIDE_BUFFER,
   ITEM_DRIFT_SPAWN_OFFSET, ITEM_DRIFT_SPEED, ITEM_DRIFT_PARK_DIST, ITEM_FLOAT_Y_OFFSET,
   SHARK_COUNT, SHARK_PATROL_SPEED, SHARK_LUNGE_SPEED, SHARK_KILL_RADIUS, SHARK_ORBIT_R,
-  BIRD_COUNT, HEIGHT_BONUS, BOARD_DROWN_BUFFER, TIDE_EBB_PERIOD,
+  BIRD_COUNT, HEIGHT_BONUS, BOARD_DROWN_BUFFER,
 } from '../constants';
-import type { Item, ItemKind, Shark, Bird, Stick, Pellet, DustRing, TutorialStep } from '../types';
+import type { Item, ItemKind, Shark, Bird, Stick, Pellet, DustRing, Bubble, TutorialStep } from '../types';
 
 // World ↔ grid helpers. The grid is centered on origin.
 // Tile (col, row): col=0..GRID-1 left→right (x), row=0..GRID-1 back→front (z).
@@ -62,7 +62,13 @@ export interface GameRef {
   inWaterTime: number;          // seconds player has been in water (resets when dry)
   tideWarnPlayed: number;       // last warn level we already played a rumble for
   tideEventCount: number;       // counts every tide event fired since start
-  isUpcomingEbb: boolean;       // true if the *next* tide will be an ebb (-1)
+  // v1.7: tide model is "rise to a NEW peak, ebb back to 0, rise to a HIGHER
+  // peak, ebb to 0, ..." rather than the old ±1 oscillation. Each cycle =
+  // one rise event + one ebb event. The peak grows by 1 every cycle so the
+  // game gets harder over time, with a real "everything is fine again" beat
+  // between peaks.
+  tideCyclePeak: number;        // peak the next RISE will reach (starts at 1)
+  isUpcomingEbb: boolean;       // true if the next tide event will be the ebb-to-0
   // Cached "nearest dry tile" while player is in water — drives the white halo
   // hint so the player can see where to flee. {col, row, dist} or null if dry.
   nearestDryWhileWet: { col: number; row: number } | null;
@@ -89,8 +95,10 @@ export interface GameRef {
   // Visual feedback (consumed by HUD / Scene each frame)
   pellets: Pellet[];
   dustRings: DustRing[];
+  bubbles: Bubble[];
   pelletId: number;
   ringId: number;
+  bubbleId: number;
   // Times we last spawned a heartbeat / foot SFX so we can throttle them
   lastHeartbeatAt: number;
   lastFootAt: number;
@@ -146,6 +154,7 @@ export function createGameState(tutorialEnabled = false): GameRef {
     inWaterTime: 0,
     tideWarnPlayed: -1,
     tideEventCount: 0,
+    tideCyclePeak: 1,
     isUpcomingEbb: false,
     nearestDryWhileWet: null,
     shakeX: 0, shakeY: 0, shakeZ: 0,
@@ -157,8 +166,10 @@ export function createGameState(tutorialEnabled = false): GameRef {
     birds: [],
     pellets: [],
     dustRings: [],
+    bubbles: [],
     pelletId: 1,
     ringId: 1,
+    bubbleId: 1,
     lastHeartbeatAt: 0,
     lastFootAt: 0,
     lastWadeAt: 0,
@@ -253,6 +264,27 @@ function pushRing(d: GameRef, kind: 'dust' | 'splash' | 'tide', x: number, y: nu
     startTime: d.time,
   });
   if (d.dustRings.length > 16) d.dustRings.shift();
+}
+
+// Scatter a cluster of white foam bubbles around (x, y, z). Each bubble has
+// a small random offset, a random max radius, and grows from 0 → maxRadius
+// then fades out. Spawned alongside splash rings to give the water surface
+// a frothy/aerated feel instead of just smooth dark waves.
+function pushSplashBubbles(d: GameRef, x: number, y: number, z: number, count = 8) {
+  for (let i = 0; i < count; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const r = 0.2 + Math.random() * 0.9;
+    d.bubbles.push({
+      id: d.bubbleId++,
+      worldX: x, worldY: y, worldZ: z,
+      offsetX: Math.cos(a) * r,
+      offsetZ: Math.sin(a) * r,
+      maxRadius: 0.06 + Math.random() * 0.10,
+      life: 0.5 + Math.random() * 0.5,
+      startTime: d.time,
+    });
+  }
+  if (d.bubbles.length > 80) d.bubbles.splice(0, d.bubbles.length - 80);
 }
 
 function shake(d: GameRef, amount: number) {
@@ -362,16 +394,10 @@ export function useGameLoop({
     // clock runs so the first tide event can fire and the lesson lands.
     const tideClockRunning = d.tutorialStep === 'done' || d.tutorialStep === 'tide';
     if (tideClockRunning) {
-      // Determine whether the upcoming tide event will be an EBB (-1) or a
-      // rise (+1). Pattern: every TIDE_EBB_PERIOD-th event is an ebb.
-      // tideEventCount = number that have already fired, so the upcoming one
-      // is the (count+1)-th. If (count+1) % TIDE_EBB_PERIOD === 0 → ebb.
-      const upcomingIsEbb =
-        (d.tideEventCount + 1) % TIDE_EBB_PERIOD === 0 &&
-        d.waterLevelTarget > 0;  // never ebb below 0
-      d.isUpcomingEbb = upcomingIsEbb;
-      // Warn 1.5s before; use the event count as the "level" identifier so
-      // we play warn exactly once per upcoming event.
+      // v1.7 cycle: each tide event alternates between RISE-to-peak and
+      // EBB-to-0. After every ebb, the next peak is 1 higher than the last.
+      // So the rises grow: 1, 2, 3, 4, ... and every ebb resets to 0.
+      d.isUpcomingEbb = d.waterLevelTarget > 0; // at peak → next is ebb
       const upcomingId = d.tideEventCount + 1;
       if (
         d.tideWarnPlayed !== upcomingId &&
@@ -383,16 +409,21 @@ export function useGameLoop({
       }
 
       if (d.time >= d.nextTideAt) {
-        const delta = upcomingIsEbb ? -1 : 1;
-        d.waterLevelTarget = Math.max(0, d.waterLevelTarget + delta);
+        const isEbb = d.isUpcomingEbb;
+        if (isEbb) {
+          d.waterLevelTarget = 0;
+          d.tideCyclePeak += 1;  // next rise will be higher
+        } else {
+          d.waterLevelTarget = d.tideCyclePeak;
+        }
         d.tideEventCount += 1;
         d.nextTideAt += TIDE_INTERVAL;
-        playSfx(upcomingIsEbb ? 'paddle' : 'tide_rise'); // ebb plays the cheery paddle cue
+        playSfx(isEbb ? 'paddle' : 'tide_rise');
         onTideEvent?.();
         pushRing(d, 'tide', 0, WATER_BASE_Y + d.waterLevelTarget * WATER_Y_PER_LEVEL, 0);
         d.tideDipPhase = 0.001;
-        d.tideDipMag = upcomingIsEbb ? 0.25 : 0.45;
-        shake(d, upcomingIsEbb ? 0.10 : 0.25);
+        d.tideDipMag = isEbb ? 0.25 : 0.45;
+        shake(d, isEbb ? 0.10 : 0.25);
         haptic?.('light');
       }
     } else {
@@ -456,27 +487,28 @@ export function useGameLoop({
     if (inWater) {
       if (d.inWaterTime === 0 && beyondStart) {
         playSfx('splash');
-        // 3 concentric rings born ~0.06s apart so the splash visibly grows
-        // outward and lingers ~1s.
+        // 3 concentric rings + a cluster of white foam bubbles for a frothy
+        // surface look beyond the dark waves.
         pushRing(d, 'splash', d.playerPos.x, waterY + 0.05, d.playerPos.z);
         pushRing(d, 'splash', d.playerPos.x, waterY + 0.05, d.playerPos.z);
         pushRing(d, 'splash', d.playerPos.x, waterY + 0.05, d.playerPos.z);
+        pushSplashBubbles(d, d.playerPos.x, waterY + 0.08, d.playerPos.z, 10);
       }
       d.inWaterTime += c;
-      // Continuous wading wake — small splash puff every ~0.25s while the
-      // player is moving. So you SEE that you're slogging through water.
+      // Continuous wading wake — small splash puff + a few bubbles
       if (stick.active && Math.hypot(stick.x, stick.y) > 0.3 &&
           d.time > d.lastWadeAt + 0.25) {
         d.lastWadeAt = d.time;
         pushRing(d, 'splash', d.playerPos.x, waterY + 0.04, d.playerPos.z);
+        pushSplashBubbles(d, d.playerPos.x, waterY + 0.06, d.playerPos.z, 3);
       }
     } else {
       if (d.inWaterTime > 0.2 && beyondStart) {
-        // Exit splash — same 3-ring chain.
         playSfx('splash');
         pushRing(d, 'splash', d.playerPos.x, waterY + 0.05, d.playerPos.z);
         pushRing(d, 'splash', d.playerPos.x, waterY + 0.05, d.playerPos.z);
         pushRing(d, 'splash', d.playerPos.x, waterY + 0.05, d.playerPos.z);
+        pushSplashBubbles(d, d.playerPos.x, waterY + 0.08, d.playerPos.z, 8);
       }
       d.inWaterTime = 0;
     }
@@ -600,6 +632,7 @@ export function useGameLoop({
         if (dist < ITEM_DRIFT_PARK_DIST) {
           it.drifting = false;
           pushRing(d, 'splash', it.position.x, waterY + 0.05, it.position.z);
+          pushSplashBubbles(d, it.position.x, waterY + 0.08, it.position.z, 6);
           it.nextRippleAt = d.time + 1.2;
         } else {
           const nx = dx / dist;
@@ -814,11 +847,12 @@ export function useGameLoop({
       }
     }
 
-    // ===== EXPIRE old pellets/rings (so the arrays don't grow forever) =====
+    // ===== EXPIRE old pellets/rings/bubbles =====
     const pelletLife = 1.0;
     const ringLife = 0.9;
     while (d.pellets.length && d.time - d.pellets[0].startTime > pelletLife) d.pellets.shift();
     while (d.dustRings.length && d.time - d.dustRings[0].startTime > ringLife) d.dustRings.shift();
+    while (d.bubbles.length && d.time - d.bubbles[0].startTime > d.bubbles[0].life) d.bubbles.shift();
 
     // ===== SCORE =====
     const newScore = Math.floor(d.time) + d.maxHeightReached * HEIGHT_BONUS;

@@ -72,9 +72,14 @@ export const ITEM_PICKUP_RADIUS = 1.5;
 export const ITEM_DRIFT_SPAWN_OFFSET = 4.5;
 // World-units / second drift speed toward the target tile edge.
 export const ITEM_DRIFT_SPEED = 2.0;
-// How close (in world units) the item gets to its target before it parks
-// and starts the idle bob.
-export const ITEM_DRIFT_PARK_DIST = 0.45;
+// v1.7: items now park IN THE WATER, ~1.7 units past the tile edge along the
+// approach line. PARK_DIST is the radial distance from the target tile
+// CENTER at which the item freezes. With TILE_SIZE/2 = 1.5 (tile half-width)
+// and PARK_DIST = 3.2, the item rests 1.7 units past the tile edge in open
+// water. The player has to walk to the very edge (or briefly wade) to be
+// within ITEM_PICKUP_RADIUS = 1.5 of it. That's the "reach into the water"
+// feel the spec calls for.
+export const ITEM_DRIFT_PARK_DIST = 3.2;
 // Vertical offset above the water surface for floating items.
 export const ITEM_FLOAT_Y_OFFSET = 0.18;
 

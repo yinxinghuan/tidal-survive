@@ -70,6 +70,21 @@ export interface DustRing {
   kind: 'dust' | 'splash' | 'tide';
 }
 
+// White foam bubble that grows from small to its target radius then fades.
+// Several spawn together at a splash to give "frothy water" feel beyond the
+// dark ring waves.
+export interface Bubble {
+  id: number;
+  worldX: number; worldZ: number; worldY: number;
+  startTime: number;
+  // Where the bubble settles in screen coords (offset from origin).
+  offsetX: number; offsetZ: number;
+  // Final radius before the bubble pops.
+  maxRadius: number;
+  // Lifetime in seconds.
+  life: number;
+}
+
 // Active tutorial step
 export type TutorialStep = 'move' | 'pickup' | 'drop' | 'tide' | 'done';
 
