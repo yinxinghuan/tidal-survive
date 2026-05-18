@@ -8,7 +8,7 @@ import {
   ITEM_SPAWN_INTERVAL_MIN, ITEM_SPAWN_INTERVAL_MAX, ITEM_MAX_ACTIVE,
   ITEM_WEIGHTS, ITEM_PICKUP_RADIUS, PADDLE_TIDE_BUFFER, ITEM_DROP_HEIGHT,
   SHARK_COUNT, SHARK_PATROL_SPEED, SHARK_LUNGE_SPEED, SHARK_KILL_RADIUS, SHARK_ORBIT_R,
-  BIRD_COUNT, HEIGHT_BONUS,
+  BIRD_COUNT, HEIGHT_BONUS, BOARD_DROWN_BUFFER,
 } from '../constants';
 import type { Item, ItemKind, Shark, Bird, Stick, Pellet, DustRing, TutorialStep } from '../types';
 
@@ -89,6 +89,12 @@ export interface GameRef {
   lastHeartbeatAt: number;
   lastFootAt: number;
 
+  // Tap-drop signal: incremented by TidalSurvive.tsx when the joystick gesture
+  // ends without significant travel. The game loop polls this counter each
+  // frame and, if it's incremented, drops the carry on the current tile.
+  tapDropPending: number;
+  tapDropConsumed: number;
+
   // Onboarding
   startRitual: 'idle' | 'ready' | 'go' | 'done';
   startRitualSince: number;     // game-time the current phase began
@@ -145,6 +151,8 @@ export function createGameState(tutorialEnabled = false): GameRef {
     ringId: 1,
     lastHeartbeatAt: 0,
     lastFootAt: 0,
+    tapDropPending: 0,
+    tapDropConsumed: 0,
     startRitual: 'ready',
     startRitualSince: 0,
     tutorialStep: tutorialEnabled ? 'move' : 'done',
@@ -256,6 +264,24 @@ export function useGameLoop({
     // Player starts in center
     const center = tileCenter(d.playerCol, d.playerRow);
     d.playerPos.set(center.x, tileTopY(0), center.z);
+
+    // v1.3: starter plank — outside the tutorial flow, drop a guaranteed
+    // plank two tiles ahead of the player at game start. So the first thing
+    // the player does is interact with the loop, not stare at empty sand.
+    if (d.tutorialStep === 'done') {
+      const startCol = Math.min(GRID - 1, d.playerCol + 2);
+      const startRow = d.playerRow;
+      const cc = tileCenter(startCol, startRow);
+      d.items.push({
+        id: d.itemIdCounter++,
+        kind: 'plank',
+        position: new THREE.Vector3(cc.x, tileTopY(0) + 0.05 + ITEM_DROP_HEIGHT, cc.z),
+        col: startCol, row: startRow,
+        vy: 0, landed: false, landY: tileTopY(0) + 0.05,
+        phase: 0,
+      });
+    }
+
     d.initialized = true;
   }
 
@@ -489,7 +515,6 @@ export function useGameLoop({
             haptic?.('light');
             pushPellet(d, 'pick', it.kind === 'boulder' ? '+2 PICK' : '+1 PICK', it.position.x, it.position.y + 0.6, it.position.z);
             pushRing(d, 'dust', it.position.x, it.position.y, it.position.z);
-            if (onTile) (d as any).__lastDropTile = onTile.col * GRID + onTile.row;
             // Tutorial: advance from 'pickup' to 'drop'
             if (d.tutorialStep === 'pickup' && it.id === d.tutorialItemId) {
               d.tutorialStep = 'drop';
@@ -503,35 +528,38 @@ export function useGameLoop({
           break;
         }
       }
-    } else if (d.carrying && onTile) {
-      const tileId = onTile.col * GRID + onTile.row;
-      if ((d as any).__lastDropTile !== tileId) {
-        const gain = heightGain(d.carrying);
-        if (gain > 0) {
-          d.heights[onTile.col][onTile.row] += gain;
-          d.lastGrowAt[onTile.col][onTile.row] = d.time;
-          playSfx(d.carrying === 'boulder' ? 'thud' : 'plank_drop');
-          if (d.carrying === 'boulder') playSfx('carry_grunt');
-          haptic?.(d.carrying === 'boulder' ? 'heavy' : 'light');
-          (d as any).__lastDropTile = tileId;
-          // +N HEIGHT pellet (only celebrate when we hit a NEW max)
-          const center = tileCenter(onTile.col, onTile.row);
-          const newTop = tileTopY(d.heights[onTile.col][onTile.row]);
-          pushPellet(d, 'height', `+${gain * HEIGHT_BONUS}`, center.x, newTop + 0.6, center.z);
-          pushRing(d, 'dust', center.x, GROUND_Y, center.z);
-          shake(d, d.carrying === 'boulder' ? 0.35 : 0.18);
-          d.carrying = null;
-          // Tutorial advance
-          if (d.tutorialStep === 'drop') {
-            d.tutorialStep = 'tide';
-            d.tutorialDropTarget = null;
-            // Now release the tide clock — set nextTideAt 2.5s ahead so warn fires soon
-            d.nextTideAt = d.time + 2.5;
-          }
+    } else if (d.carrying && onTile && d.tapDropPending > d.tapDropConsumed) {
+      // v1.3: tap-to-drop. The joystick's `onTap` (release without drag)
+      // increments `tapDropPending`. We consume one each frame the loop sees
+      // a fresh tap, drop on the current tile, and DON'T fire on traversal.
+      // This lets the player carry a plank across the island without losing
+      // it to whichever intermediate tile they cross.
+      d.tapDropConsumed = d.tapDropPending;
+      const gain = heightGain(d.carrying);
+      if (gain > 0) {
+        d.heights[onTile.col][onTile.row] += gain;
+        d.lastGrowAt[onTile.col][onTile.row] = d.time;
+        playSfx(d.carrying === 'boulder' ? 'thud' : 'plank_drop');
+        if (d.carrying === 'boulder') playSfx('carry_grunt');
+        haptic?.(d.carrying === 'boulder' ? 'heavy' : 'light');
+        const center = tileCenter(onTile.col, onTile.row);
+        const newTop = tileTopY(d.heights[onTile.col][onTile.row]);
+        pushPellet(d, 'height', `+${gain * HEIGHT_BONUS}`, center.x, newTop + 0.6, center.z);
+        pushRing(d, 'dust', center.x, GROUND_Y, center.z);
+        shake(d, d.carrying === 'boulder' ? 0.35 : 0.18);
+        d.carrying = null;
+        // Tutorial advance
+        if (d.tutorialStep === 'drop') {
+          d.tutorialStep = 'tide';
+          d.tutorialDropTarget = null;
+          d.nextTideAt = d.time + 2.5;
         }
       }
     }
-    if (!d.carrying) (d as any).__lastDropTile = null;
+    // Keep the consumed counter in sync if the player taps without carrying
+    if (!d.carrying && d.tapDropPending > d.tapDropConsumed) {
+      d.tapDropConsumed = d.tapDropPending;
+    }
 
     // ===== TUTORIAL STATE TRANSITIONS =====
     if (d.tutorialStep === 'move' && stick.active && d.time > 0.4) {
@@ -654,7 +682,7 @@ export function useGameLoop({
         }
       }
       const highestTop = tileTopY(highestStack);
-      if (waterY > highestTop + TILE_THICKNESS * 0.6) {
+      if (waterY > highestTop + BOARD_DROWN_BUFFER) {
         onWaterFlash?.('drown');
         endGame('drowned');
         return;

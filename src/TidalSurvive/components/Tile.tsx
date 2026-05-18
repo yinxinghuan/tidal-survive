@@ -84,10 +84,19 @@ export function Tile({
     rootRef.current.position.y = -drownPhase.current * TILE_SINK_DEPTH;
 
     // Player halo — only visible on the tile under the player's feet.
+    // When carrying, the halo switches to cyan to telegraph "tap here drops".
     if (haloMatRef.current && haloRef.current) {
       const isPlayer = d.playerCol === col && d.playerRow === row && !drowned;
-      haloMatRef.current.opacity += ((isPlayer ? 0.85 : 0) - haloMatRef.current.opacity) * 0.18;
-      // Hover y a touch above the current tile top
+      const carrying = !!d.carrying;
+      const targetOpacity = isPlayer ? (carrying ? 0.92 : 0.65) : 0;
+      haloMatRef.current.opacity += (targetOpacity - haloMatRef.current.opacity) * 0.18;
+      const targetR = isPlayer ? (carrying ? 0x55 : 0xff) : 0xff;
+      const targetG = isPlayer ? (carrying ? 0xe6 : 0xe1) : 0xe1;
+      const targetB = isPlayer ? (carrying ? 0xff : 0x7a) : 0x7a;
+      const m = haloMatRef.current.color;
+      m.r += (targetR / 255 - m.r) * 0.18;
+      m.g += (targetG / 255 - m.g) * 0.18;
+      m.b += (targetB / 255 - m.b) * 0.18;
       haloRef.current.position.y = myTop + 0.02;
     }
 

@@ -36,7 +36,12 @@ export function TidalSurvive() {
   const [tutorialStep, setTutorialStep] = useState<'move' | 'pickup' | 'drop' | 'tide' | 'done'>('done');
 
   const stateRef = useRef(createGameState());
-  const { stickRef, view } = useJoystick(phase === 'playing');
+
+  // Tap-to-drop: bumps a counter on the state ref so the game loop can react.
+  const onTapToDrop = useCallback(() => {
+    stateRef.current.tapDropPending += 1;
+  }, []);
+  const { stickRef, view } = useJoystick(phase === 'playing', onTapToDrop);
 
   const {
     isInAigram, submitScore, fetchGlobalLeaderboard, fetchFriendsLeaderboard,

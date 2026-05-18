@@ -2,19 +2,22 @@ import { useEffect, useRef, useState } from 'react';
 import type { Stick } from '../types';
 
 const RADIUS = 60; // half of the visible ring (120px ring → 60px max stick)
+// A press counts as a "tap" (vs a drag) when it stays within this many pixels
+// for its entire lifetime. Tap fires `onTap` on release. Drag does not.
+const TAP_MAX_TRAVEL = 10;
 
-export function useJoystick(enabled: boolean) {
+export function useJoystick(enabled: boolean, onTap?: () => void) {
   const stickRef = useRef<Stick>({ active: false, x: 0, y: 0 });
-  // For rendering the visual ring, we expose a state too (low-frequency updates).
   const [view, setView] = useState({ active: false, ox: 0, oy: 0, x: 0, y: 0 });
   const pointerId = useRef<number | null>(null);
   const origin = useRef({ x: 0, y: 0 });
+  const maxTravel = useRef(0);
+  // Latest callback in a ref so we don't have to rebind the listeners.
+  const tapRef = useRef<typeof onTap>(onTap);
+  tapRef.current = onTap;
 
   useEffect(() => {
     if (!enabled) {
-      // CRUCIAL: clear pointerId so a death that fires mid-drag doesn't keep
-      // the captured pointer id alive. Without this, the next game's pointerdown
-      // hits `if (pointerId.current !== null) return` and the joystick is dead.
       pointerId.current = null;
       stickRef.current.active = false;
       stickRef.current.x = 0;
@@ -27,6 +30,7 @@ export function useJoystick(enabled: boolean) {
       if (pointerId.current !== null) return;
       pointerId.current = e.pointerId;
       origin.current = { x: e.clientX, y: e.clientY };
+      maxTravel.current = 0;
       stickRef.current.active = true;
       stickRef.current.x = 0;
       stickRef.current.y = 0;
@@ -37,24 +41,25 @@ export function useJoystick(enabled: boolean) {
       const dx = e.clientX - origin.current.x;
       const dy = e.clientY - origin.current.y;
       const len = Math.sqrt(dx * dx + dy * dy);
+      if (len > maxTravel.current) maxTravel.current = len;
       const clampLen = Math.min(len, RADIUS);
       const nx = len > 0 ? (dx / len) * clampLen : 0;
       const ny = len > 0 ? (dy / len) * clampLen : 0;
       const ux = nx / RADIUS;
       const uy = ny / RADIUS;
-      // Camera is at (0, 35, 15) looking at origin → top-down with a slight forward tilt.
-      // Screen-right ≈ world +x, screen-down ≈ world +z (toward camera). So pass-through.
       stickRef.current.x = ux;
       stickRef.current.y = uy;
       setView({ active: true, ox: origin.current.x, oy: origin.current.y, x: nx, y: ny });
     };
     const onUp = (e: PointerEvent) => {
       if (pointerId.current !== e.pointerId) return;
+      const wasTap = maxTravel.current < TAP_MAX_TRAVEL;
       pointerId.current = null;
       stickRef.current.active = false;
       stickRef.current.x = 0;
       stickRef.current.y = 0;
       setView(v => ({ ...v, active: false }));
+      if (wasTap && tapRef.current) tapRef.current();
     };
 
     window.addEventListener('pointerdown', onDown);

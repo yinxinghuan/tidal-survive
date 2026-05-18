@@ -10,17 +10,29 @@ export const TILE_THICKNESS = 0.45;     // visual block thickness per stack unit
 export const GROUND_Y = 0;
 
 // Tide
-export const TIDE_INTERVAL = 5;         // seconds between water level +1
-export const TIDE_RISE_DURATION = 0.8;  // water lerps in over this long when level changes
-// Water y at level 0. Set below GROUND_Y so the start is safe AND the water
-// plane is visible around/between tiles. With WATER_Y_PER_LEVEL =
-// TILE_THICKNESS (0.45), level 1 leaves a small dry gap on a bare tile
-// (-0.15 < 0), and level 2 floods the bare tile so the player must have
-// stacked at least once by ~10s.
-export const WATER_BASE_Y = -0.6;
+// v1.3: 5s → 6s per tide so each level lasts a beat longer.
+export const TIDE_INTERVAL = 6;
+export const TIDE_RISE_DURATION = 0.8;
+// v1.3: WATER_BASE_Y pushed deeper (-0.6 → -1.05) so bare tiles survive the
+// first TWO tide events. Level 3 (~18s) is the first time the bare ground
+// floods, giving new players a real onboarding window before they must
+// have stacked anything.
+//
+// Schedule with WATER_Y_PER_LEVEL = TILE_THICKNESS (0.45):
+//   level 0 → y = -1.05 (deep)
+//   level 1 → y = -0.60
+//   level 2 → y = -0.15
+//   level 3 → y = +0.30  ← bare tile (top=0) finally floods, need stack 1
+//   level 4 → y = +0.75  ← need stack 2
+//   level 5 → y = +1.20  ← need stack 3
+export const WATER_BASE_Y = -1.05;
 export const WATER_Y_PER_LEVEL = TILE_THICKNESS;
 // Drown threshold: a tile is "drowned" once water.y > stackTop - margin.
 export const DROWN_MARGIN = 0.08;
+// Buffer applied to the global "no dry land anywhere" game-over check. v1.3
+// raised this from 0.6 → 1.0 × TILE_THICKNESS so the player has a real
+// "wading in panic" window before the board hard-overs them.
+export const BOARD_DROWN_BUFFER = TILE_THICKNESS * 1.0;
 
 // Player
 export const PLAYER_SPEED_NORMAL = 8.0;
@@ -36,8 +48,9 @@ export const GRACE_PERIOD = 1.5;
 export const ITEM_SPAWN_INTERVAL_MIN = 3;
 export const ITEM_SPAWN_INTERVAL_MAX = 5;
 export const ITEM_MAX_ACTIVE = 6;
-// Spawn weights — sum doesn't have to be 1.
-export const ITEM_WEIGHTS = { plank: 6, boulder: 3, paddle: 1 };
+// Spawn weights — sum doesn't have to be 1. v1.3 doubled paddle weight (1 → 2)
+// because it's the only "panic button" out of a tide and was too rare to land.
+export const ITEM_WEIGHTS = { plank: 6, boulder: 3, paddle: 2 };
 export const PADDLE_TIDE_BUFFER = 5.0; // seconds added to nextTide on pickup
 export const ITEM_PICKUP_RADIUS = 1.1;
 
