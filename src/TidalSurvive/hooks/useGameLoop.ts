@@ -9,7 +9,7 @@ import {
   ITEM_WEIGHTS, ITEM_PICKUP_RADIUS, PADDLE_TIDE_BUFFER,
   ITEM_DRIFT_SPAWN_OFFSET, ITEM_DRIFT_SPEED, ITEM_DRIFT_PARK_DIST, ITEM_FLOAT_Y_OFFSET,
   SHARK_COUNT, SHARK_PATROL_SPEED, SHARK_LUNGE_SPEED, SHARK_KILL_RADIUS, SHARK_ORBIT_R,
-  BIRD_COUNT, HEIGHT_BONUS, BOARD_DROWN_BUFFER, SHALLOW_PADDING,
+  BIRD_COUNT, HEIGHT_BONUS, BOARD_DROWN_BUFFER, SHALLOW_PADDING, MAX_CLIMB_LAYERS,
 } from '../constants';
 import type { Item, ItemKind, Shark, Bird, Stick, Pellet, DustRing, Bubble, TutorialStep } from '../types';
 
@@ -190,18 +190,22 @@ export function createGameState(tutorialEnabled = false): GameRef {
   };
 }
 
-// Build a drifting item for the given target tile. Spawn point is computed
-// by extending the (origin → target tile) ray to ITEM_DRIFT_SPAWN_OFFSET
-// units OUTSIDE the playfield, so the item visibly drifts in from the open
-// water toward the island.
+// Build a drifting item for the given target tile.
+//   parkOutside=true:  item parks ITEM_DRIFT_PARK_DIST past the tile center in
+//                      the outward direction → out in open water beyond the
+//                      island edge. Used for dry edge tiles (legacy behavior).
+//   parkOutside=false: item parks AT the tile center → over a flooded tile.
+//                      The tile is submerged so the item floats on top of it.
+//                      Used during high tide when the player has to wade
+//                      across flooded ground to retrieve items.
 function makeDriftItem(
   id: number, kind: ItemKind,
   targetCol: number, targetRow: number,
   waterY: number,
+  parkOutside: boolean,
 ): Item {
   const center = tileCenter(targetCol, targetRow);
-  // Outward direction from origin. If the target is at origin (center of
-  // grid), pick a random angle.
+  // Outward direction from origin. If the target is at origin, pick random.
   let ox = center.x, oz = center.z;
   const r = Math.sqrt(ox * ox + oz * oz);
   if (r < 0.01) {
@@ -210,9 +214,14 @@ function makeDriftItem(
   } else {
     ox /= r; oz /= r;
   }
-  // Place spawn point beyond the target by SPAWN_OFFSET. World units.
+  // Park position depends on whether item should sit in open water past the
+  // edge, or on the flooded tile itself.
+  const targetX = parkOutside ? center.x + ox * ITEM_DRIFT_PARK_DIST : center.x;
+  const targetZ = parkOutside ? center.z + oz * ITEM_DRIFT_PARK_DIST : center.z;
+  // Spawn outside the playfield, behind the park position relative to origin.
   const halfWorld = (GRID / 2) * TILE_SIZE;
-  const spawnRadius = halfWorld + ITEM_DRIFT_SPAWN_OFFSET;
+  const targetRadius = Math.sqrt(targetX * targetX + targetZ * targetZ);
+  const spawnRadius = Math.max(halfWorld + ITEM_DRIFT_SPAWN_OFFSET, targetRadius + 3);
   const spawnX = ox * spawnRadius;
   const spawnZ = oz * spawnRadius;
   return {
@@ -220,10 +229,9 @@ function makeDriftItem(
     position: new THREE.Vector3(spawnX, waterY + ITEM_FLOAT_Y_OFFSET, spawnZ),
     col: targetCol, row: targetRow,
     drifting: true,
-    targetX: center.x,
-    targetZ: center.z,
+    targetX, targetZ,
     phase: Math.random() * Math.PI * 2,
-    nextRippleAt: 0,   // first ripple fires soon after parking
+    nextRippleAt: 0,
   };
 }
 
@@ -353,7 +361,7 @@ export function useGameLoop({
       const startCol = GRID - 1;
       const startRow = d.playerRow;
       const waterY0 = WATER_BASE_Y; // game starts at waterLevel = 0
-      d.items.push(makeDriftItem(d.itemIdCounter++, 'plank', startCol, startRow, waterY0));
+      d.items.push(makeDriftItem(d.itemIdCounter++, 'plank', startCol, startRow, waterY0, true));
     }
 
     d.initialized = true;
@@ -449,12 +457,30 @@ export function useGameLoop({
     }
 
     // ===== PLAYER MOVEMENT =====
+    // v1.12: climb gating. Compute the proposed new XZ, then check the tile
+    // they'd end up on. If it's more than MAX_CLIMB_LAYERS taller than the
+    // current tile, reject the move on that axis (player "slips" off the
+    // sheer face) and stays put on that component. Going down or onto a
+    // tile of similar height is fine.
     const speed = carrySpeed(d.carrying);
     if (stick.active) {
       const dir = new THREE.Vector3(stick.x, 0, stick.y);
       if (dir.length() > 0.05) {
-        d.playerPos.x += dir.x * speed * c;
-        d.playerPos.z += dir.z * speed * c;
+        const dxMove = dir.x * speed * c;
+        const dzMove = dir.z * speed * c;
+        const curStack = (d.playerCol >= 0 && d.playerCol < GRID && d.playerRow >= 0 && d.playerRow < GRID)
+          ? d.heights[d.playerCol][d.playerRow]
+          : 0;
+        // Test X axis independently
+        const candX = d.playerPos.x + dxMove;
+        const candTileX = worldToTile(candX, d.playerPos.z);
+        const candStackX = candTileX ? d.heights[candTileX.col][candTileX.row] : 0;
+        if (candStackX - curStack < MAX_CLIMB_LAYERS) d.playerPos.x = candX;
+        // Test Z axis independently
+        const candZ = d.playerPos.z + dzMove;
+        const candTileZ = worldToTile(d.playerPos.x, candZ);
+        const candStackZ = candTileZ ? d.heights[candTileZ.col][candTileZ.row] : 0;
+        if (candStackZ - curStack < MAX_CLIMB_LAYERS) d.playerPos.z = candZ;
         d.playerRot = Math.atan2(dir.x, dir.z);
       }
     }
@@ -573,29 +599,34 @@ export function useGameLoop({
     // wet tile, dropping items into the ocean.
     if (d.time >= d.nextItemSpawnAt && d.items.length < ITEM_MAX_ACTIVE && d.tutorialStep === 'done') {
       d.nextItemSpawnAt = d.time + ITEM_SPAWN_INTERVAL_MIN + Math.random() * (ITEM_SPAWN_INTERVAL_MAX - ITEM_SPAWN_INTERVAL_MIN);
-      // v1.7.1: items MUST target EDGE tiles so the parked position lands in
-      // open water past the island, forcing the player to wade-pickup. An
-      // interior target made the item park inside the grid on a dry tile,
-      // which felt like a normal dry-ground pickup.
-      const edgeDryTiles: { col: number; row: number }[] = [];
-      const allEdgeTiles: { col: number; row: number }[] = [];
+      // v1.12: spawn pool has TWO kinds of valid targets:
+      //   1. Dry EDGE tiles — item drifts past the island, parks in open
+      //      water beyond the edge (player wades briefly to grab).
+      //   2. FLOODED tiles (interior or edge) — item drifts onto the
+      //      submerged tile and floats above it. During high tide the
+      //      player has to wade across drowned ground to retrieve these.
+      // At low tide there are no flooded tiles, so it's just the legacy
+      // edge-outside behavior. As the water rises, more interior items
+      // appear, raising the risk/reward of fetching them.
+      type Target = { col: number; row: number; parkOutside: boolean };
+      const targets: Target[] = [];
       for (let cc = 0; cc < GRID; cc++) {
         for (let rr = 0; rr < GRID; rr++) {
           const isEdge = cc === 0 || cc === GRID - 1 || rr === 0 || rr === GRID - 1;
-          if (!isEdge) continue;
-          allEdgeTiles.push({ col: cc, row: rr });
           const top = tileTopY(d.heights[cc][rr]);
-          if (top > waterY + DROWN_MARGIN * 0.5) {
-            edgeDryTiles.push({ col: cc, row: rr });
+          const dry = top > waterY + DROWN_MARGIN * 0.5;
+          if (dry && isEdge) {
+            targets.push({ col: cc, row: rr, parkOutside: true });
+          } else if (!dry) {
+            targets.push({ col: cc, row: rr, parkOutside: false });
           }
         }
       }
-      let col: number, row: number;
-      const pool = edgeDryTiles.length > 0 ? edgeDryTiles : allEdgeTiles;
-      const pick = pool[Math.floor(Math.random() * pool.length)];
-      col = pick.col; row = pick.row;
-      const kind = pickItemKind();
-      d.items.push(makeDriftItem(d.itemIdCounter++, kind, col, row, waterY));
+      if (targets.length > 0) {
+        const pick = targets[Math.floor(Math.random() * targets.length)];
+        const kind = pickItemKind();
+        d.items.push(makeDriftItem(d.itemIdCounter++, kind, pick.col, pick.row, waterY, pick.parkOutside));
+      }
     }
 
     // ===== TUTORIAL SCRIPTED PLANK (step 'pickup' guarantees a plank near player) =====
@@ -605,7 +636,7 @@ export function useGameLoop({
       const targetCol = GRID - 1;
       const targetRow = d.playerRow;
       const id = d.itemIdCounter++;
-      d.items.push(makeDriftItem(id, 'plank', targetCol, targetRow, waterY));
+      d.items.push(makeDriftItem(id, 'plank', targetCol, targetRow, waterY, true));
       d.tutorialItemId = id;
     }
 
@@ -613,38 +644,24 @@ export function useGameLoop({
     for (const it of d.items) {
       const yBob = Math.sin(d.time * 1.8 + it.phase) * 0.05;
       if (it.drifting) {
-        // If the target tile drowned mid-drift, retarget to the nearest dry
-        // tile so the item doesn't park somewhere the player can't reach.
-        const targetStack = d.heights[it.col][it.row];
-        const targetTop = tileTopY(targetStack);
+        // v1.12: if the target tile flooded mid-drift, snap the park target
+        // to the tile CENTER (parkOutside → parkOnTile). The item now lands
+        // ON the drowned tile instead of out in deep water past the (now
+        // useless) edge offset. Player can wade onto the flooded tile to
+        // grab it.
+        const targetTop = tileTopY(d.heights[it.col][it.row]);
         if (targetTop <= waterY + DROWN_MARGIN * 0.5) {
-          let bestDist = Infinity;
-          let bestCol = it.col, bestRow = it.row;
-          for (let cc = 0; cc < GRID; cc++) {
-            for (let rr = 0; rr < GRID; rr++) {
-              const top = tileTopY(d.heights[cc][rr]);
-              if (top <= waterY + DROWN_MARGIN * 0.5) continue;
-              const center = tileCenter(cc, rr);
-              const dx = center.x - it.position.x;
-              const dz = center.z - it.position.z;
-              const dist = dx * dx + dz * dz;
-              if (dist < bestDist) {
-                bestDist = dist;
-                bestCol = cc; bestRow = rr;
-              }
-            }
-          }
-          if (bestDist < Infinity) {
-            const newCenter = tileCenter(bestCol, bestRow);
-            it.col = bestCol; it.row = bestRow;
-            it.targetX = newCenter.x; it.targetZ = newCenter.z;
-          }
+          const c = tileCenter(it.col, it.row);
+          it.targetX = c.x;
+          it.targetZ = c.z;
         }
 
         const dx = it.targetX - it.position.x;
         const dz = it.targetZ - it.position.z;
         const dist = Math.sqrt(dx * dx + dz * dz);
-        if (dist < ITEM_DRIFT_PARK_DIST) {
+        // The offset (past tile edge in water) is baked into targetX/Z now,
+        // so the park threshold is just "we arrived" — small fixed value.
+        if (dist < 0.35) {
           it.drifting = false;
           pushRing(d, 'splash', it.position.x, waterY + 0.05, it.position.z);
           pushSplashBubbles(d, it.position.x, waterY + 0.08, it.position.z, 6);

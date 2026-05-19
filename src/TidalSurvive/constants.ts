@@ -50,6 +50,12 @@ export const TIDE_EBB_PERIOD = 3;
 // The threat is reserved for actually swimming far from shore. World units.
 export const SHALLOW_PADDING = TILE_SIZE; // 1 tile wide ring beyond the grid
 
+// v1.12: max climbable height difference between adjacent tiles. If a tile
+// is more than this many LAYERS taller than the one the player is on, they
+// can't step onto it — they slip back. Forces players to build spread-out
+// terraces rather than one giant tower.
+export const MAX_CLIMB_LAYERS = 5;
+
 // Player
 export const PLAYER_SPEED_NORMAL = 8.0;
 export const PLAYER_SPEED_CARRYING_HEAVY = 4.5; // boulder
