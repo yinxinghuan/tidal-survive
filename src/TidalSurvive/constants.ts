@@ -1,9 +1,12 @@
 // Tidal Survive — grid island slowly drowning under rising tide.
 // 8x8 height grid, water rises every TIDE_INTERVAL seconds.
 
-export const GRID = 8;                  // 8 x 8 grid
+// v1.11: 8 → 6. User felt the 8x8 was too sprawling for a mobile screen.
+// 6x6 = 36 tiles still gives strategic depth but the player walks less,
+// items are closer, and the camera frames the whole island better.
+export const GRID = 6;
 export const TILE_SIZE = 3;             // world units per tile
-export const PLAYFIELD = GRID * TILE_SIZE; // 24
+export const PLAYFIELD = GRID * TILE_SIZE; // 18
 export const TILE_THICKNESS = 0.45;     // visual block thickness per stack unit
 
 // The "ground" — top of a bare (stack=0) tile, where the player stands at start.

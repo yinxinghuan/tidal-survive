@@ -102,6 +102,34 @@ function noiseBand(dur: number, peak: number, t0: number, centerHz: number, q: n
   src.stop(t0 + dur + 0.05);
 }
 
+// Wave-whoosh noise — bandpass-filtered white noise whose center frequency
+// SWEEPS over the duration. With a soft attack/decay this gives the classic
+// "shhhhh" wave-rolling sound. Use fromHz < toHz for an incoming swell, and
+// fromHz > toHz for a receding wave.
+function noiseSweep(t0: number, dur: number, peak: number, fromHz: number, toHz: number, q = 1.2) {
+  if (!ctx || !master) return;
+  const buf = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * dur), ctx.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  const filt = ctx.createBiquadFilter();
+  filt.type = 'bandpass';
+  filt.Q.value = q;
+  filt.frequency.setValueAtTime(fromHz, t0);
+  filt.frequency.exponentialRampToValueAtTime(Math.max(40, toHz), t0 + dur * 0.7);
+  const g = ctx.createGain();
+  // Soft attack (30% of dur), gentle peak hold, long exponential decay.
+  // Specifically NOT percussive — water doesn't crack, it builds and recedes.
+  g.gain.setValueAtTime(0, t0);
+  g.gain.linearRampToValueAtTime(peak, t0 + dur * 0.3);
+  g.gain.setValueAtTime(peak, t0 + dur * 0.55);
+  g.gain.exponentialRampToValueAtTime(0.0005, t0 + dur);
+  src.connect(filt).connect(g).connect(master);
+  src.start(t0);
+  src.stop(t0 + dur + 0.05);
+}
+
 // Single bubble pop — short bandpass blip with a quick frequency drop.
 function bubble(t0: number, centerHz: number, peak = 0.18) {
   if (!ctx || !master) return;
@@ -176,25 +204,21 @@ export function playSfx(key: SfxKey) {
       noiseBurst(0.5, 0.12, t + 0.1, 380);
       break;
     case 'tide_rise':
-      // Low whoosh that PITCHES UP — water surging in, breaking on top
-      noiseBurst(0.85, 0.30, t, 900);
-      tone(70, 'sine', 0.85, 0.22, t, 180);   // pitch sweeps UP (rise!)
-      // Crest crash on top
-      noiseBurst(0.25, 0.20, t + 0.25, 4500);
-      // A few bubble pops in the foam
-      bubble(t + 0.30, 800, 0.14);
-      bubble(t + 0.38, 1200, 0.12);
+      // Wave rolling in — pure "shhhhh" whoosh. Bandpass noise SWEEPS from
+      // low-mid (200Hz) up to bright high (2800Hz) over 1.8s with a soft
+      // attack and long decay. No discrete tones, no percussive crests —
+      // sounds like actual water rolling onto a beach.
+      noiseSweep(t, 1.8, 0.28, 220, 2800, 1.0);
+      // A second, quieter, broader pass layered behind for body — gives the
+      // wave some low-end "rumble" without sounding mechanical.
+      noiseSweep(t + 0.10, 1.5, 0.10, 120, 700, 0.5);
       break;
     case 'tide_ebb':
-      // Water draining/retreating — opposite of rise: pitch sweeps DOWN,
-      // gentle long sigh, small gurgles like water through pebbles.
-      tone(180, 'sine', 1.0, 0.20, t, 60);    // pitch sweeps DOWN
-      noiseBurst(0.9, 0.22, t, 600);          // wet wash receding
-      noiseBand(0.35, 0.10, t + 0.25, 240, 0.8);
-      bubble(t + 0.10, 500, 0.10);
-      bubble(t + 0.25, 380, 0.10);
-      bubble(t + 0.45, 700, 0.08);
-      bubble(t + 0.65, 420, 0.06);
+      // Wave receding — mirror of rise. Sweeps from bright high (2800Hz)
+      // DOWN to low (160Hz) with a longer tail because retreating water
+      // takes longer to settle. Same "shhhh" character.
+      noiseSweep(t, 2.2, 0.24, 2800, 200, 1.0);
+      noiseSweep(t + 0.10, 2.0, 0.09, 1200, 100, 0.5);
       break;
     case 'heartbeat':
       // Pair of low thumps
