@@ -9,7 +9,7 @@ import {
   ITEM_WEIGHTS, ITEM_PICKUP_RADIUS, PADDLE_TIDE_BUFFER,
   ITEM_DRIFT_SPAWN_OFFSET, ITEM_DRIFT_SPEED, ITEM_DRIFT_PARK_DIST, ITEM_FLOAT_Y_OFFSET,
   SHARK_COUNT, SHARK_PATROL_SPEED, SHARK_LUNGE_SPEED, SHARK_KILL_RADIUS, SHARK_ORBIT_R,
-  BIRD_COUNT, HEIGHT_BONUS, BOARD_DROWN_BUFFER,
+  BIRD_COUNT, HEIGHT_BONUS, BOARD_DROWN_BUFFER, SHALLOW_PADDING,
 } from '../constants';
 import type { Item, ItemKind, Shark, Bird, Stick, Pellet, DustRing, Bubble, TutorialStep } from '../types';
 
@@ -473,6 +473,7 @@ export function useGameLoop({
     const waterY = WATER_BASE_Y + d.waterLevel * WATER_Y_PER_LEVEL;
     let standY = WATER_BASE_Y;
     let inWater = false;
+    let inShallow = false;
     if (onTile) {
       const stack = d.heights[onTile.col][onTile.row];
       const top = tileTopY(stack);
@@ -481,22 +482,33 @@ export function useGameLoop({
     } else {
       inWater = true;
       standY = waterY;
+      // v1.9: SHALLOW zone — 1 tile padding past the grid where wading is
+      // safe. Visual splash effects still fire, but the shark countdown
+      // does not accumulate. This is the "safe wading" ring the player can
+      // venture into to grab items without committing to deep water.
+      const halfGrid = (GRID / 2) * TILE_SIZE;
+      const beyondShallowX = Math.abs(d.playerPos.x) > halfGrid + SHALLOW_PADDING;
+      const beyondShallowZ = Math.abs(d.playerPos.z) > halfGrid + SHALLOW_PADDING;
+      if (!beyondShallowX && !beyondShallowZ) inShallow = true;
     }
     d.playerPos.y += (standY - d.playerPos.y) * Math.min(1, c * 12);
 
     // Track in-water time (only after the start ritual is past)
+    // v1.9: SHALLOW water doesn't accumulate inWaterTime. The shark threat
+    // is reserved for DEEP water past the shallow padding.
     const beyondStart = d.startRitual === 'done' && d.time > GRACE_PERIOD;
+    const inDeep = inWater && !inShallow;
     if (inWater) {
       if (d.inWaterTime === 0 && beyondStart) {
         playSfx('splash');
-        // 3 concentric rings + a cluster of white foam bubbles for a frothy
-        // surface look beyond the dark waves.
+        // Visual splash fires for ANY water entry, shallow or deep
         pushRing(d, 'splash', d.playerPos.x, waterY + 0.05, d.playerPos.z);
         pushRing(d, 'splash', d.playerPos.x, waterY + 0.05, d.playerPos.z);
         pushRing(d, 'splash', d.playerPos.x, waterY + 0.05, d.playerPos.z);
         pushSplashBubbles(d, d.playerPos.x, waterY + 0.08, d.playerPos.z, 10);
       }
-      d.inWaterTime += c;
+      if (inDeep) d.inWaterTime += c;
+      else d.inWaterTime = 0;
       // Continuous wading wake — small splash puff + a few bubbles
       if (stick.active && Math.hypot(stick.x, stick.y) > 0.3 &&
           d.time > d.lastWadeAt + 0.25) {
@@ -744,8 +756,9 @@ export function useGameLoop({
     // ===== SHARK AI =====
     // Find the nearest shark to the player — only that one is allowed to
     // lunge. Others keep patrolling so the threat is directional, not 360°.
+    // v1.9: only DEEP water counts. Shallow wading is safe.
     let nearestSharkId = -1;
-    if (inWater && beyondStart && d.inWaterTime > SHARK_DELAY_IN_WATER) {
+    if (inDeep && beyondStart && d.inWaterTime > SHARK_DELAY_IN_WATER) {
       let nearestDist = Infinity;
       for (const s of d.sharks) {
         const dx = d.playerPos.x - s.position.x;
@@ -764,7 +777,7 @@ export function useGameLoop({
       // approach" window — sharks stay on their orbit, only their rotation
       // turns toward the player. This gives the player a real chance to swim
       // back to dry land within the 2s.
-      const inCountdown = inWater && beyondStart && d.inWaterTime > 0 && d.inWaterTime <= SHARK_DELAY_IN_WATER;
+      const inCountdown = inDeep && beyondStart && d.inWaterTime > 0 && d.inWaterTime <= SHARK_DELAY_IN_WATER;
       const isLungingShark = s.id === nearestSharkId;
 
       if (isLungingShark) {
@@ -820,7 +833,7 @@ export function useGameLoop({
       onGameOver(d.score, reason);
     };
 
-    if (beyondStart && inWater && d.inWaterTime > SHARK_DELAY_IN_WATER) {
+    if (beyondStart && inDeep && d.inWaterTime > SHARK_DELAY_IN_WATER) {
       let died = false;
       for (const s of d.sharks) {
         const dx = s.position.x - d.playerPos.x;

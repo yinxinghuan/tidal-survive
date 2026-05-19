@@ -41,6 +41,12 @@ export const BOARD_DROWN_BUFFER = TILE_THICKNESS * 1.0;
 // The first ebb fires on tide #3, the next on tide #6, etc.
 export const TIDE_EBB_PERIOD = 3;
 
+// v1.9: shallow water padding around the island. Player walking off the
+// grid but within this padding is "in shallow water" — visual splash and
+// foam effects still fire, but the shark countdown does NOT accumulate.
+// The threat is reserved for actually swimming far from shore. World units.
+export const SHALLOW_PADDING = TILE_SIZE; // 1 tile wide ring beyond the grid
+
 // Player
 export const PLAYER_SPEED_NORMAL = 8.0;
 export const PLAYER_SPEED_CARRYING_HEAVY = 4.5; // boulder
@@ -61,11 +67,9 @@ export const ITEM_MAX_ACTIVE = 6;
 // because it's the only "panic button" out of a tide and was too rare to land.
 export const ITEM_WEIGHTS = { plank: 6, boulder: 3, paddle: 2 };
 export const PADDLE_TIDE_BUFFER = 5.0; // seconds added to nextTide on pickup
-// v1.5: 1.1 → 1.5. Items now park at the tile center but float on water — the
-// player stands on the tile top (~0.3 units higher). The wider radius makes
-// "stand on the same tile" feel forgiving and lets the player pluck items
-// off an adjacent edge without precision.
-export const ITEM_PICKUP_RADIUS = 1.5;
+// v1.9: 1.5 → 1.8 — more forgiving reach so the player can grab items just
+// past the tile edge without pixel-perfect positioning.
+export const ITEM_PICKUP_RADIUS = 1.8;
 
 // v1.5: items drift in from the water rather than dropping from the sky.
 // Spawn distance OUTSIDE the playfield in world units (so they're visible at

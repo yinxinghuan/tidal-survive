@@ -1,37 +1,33 @@
 import { useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import { PLAYFIELD, WATER_BASE_Y, WATER_Y_PER_LEVEL, COLORS } from '../constants';
+import { PLAYFIELD, WATER_BASE_Y, WATER_Y_PER_LEVEL, COLORS, SHALLOW_PADDING } from '../constants';
 import type { GameRef } from '../hooks/useGameLoop';
 
 /**
- * Breaking-waves foam line ringing the island. A thin torus that sits at the
- * water surface y, with an emissive shader-like material that ripples its
- * opacity via a sine to read as "waves breaking".
- *
- * Radius is anchored to PLAYFIELD/2 so it hugs the square island. Not a true
- * conformal foam, but visually unmistakable as "island edge".
+ * Breaking-waves foam line ringing the island AND a second outer ring marking
+ * the deep-water boundary (where sharks become a threat). Both rest at the
+ * current water surface y.
  */
 export function FoamEdge({ stateRef }: { stateRef: React.MutableRefObject<GameRef> }) {
   const groupRef = useRef<THREE.Group>(null);
-  const matRef = useRef<THREE.MeshBasicMaterial>(null);
+  const innerMatRef = useRef<THREE.MeshBasicMaterial>(null);
+  const outerMatRef = useRef<THREE.MeshBasicMaterial>(null);
 
   useFrame(({ clock }) => {
     if (!groupRef.current) return;
     const d = stateRef.current;
     const waterY = WATER_BASE_Y + d.waterLevel * WATER_Y_PER_LEVEL;
-    // Sit just above the water surface so it reads as foam crest.
     groupRef.current.position.y = waterY + 0.03;
-    if (matRef.current) {
-      const t = clock.getElapsedTime();
-      matRef.current.opacity = 0.55 + Math.sin(t * 1.6) * 0.18;
-    }
+    const t = clock.getElapsedTime();
+    if (innerMatRef.current) innerMatRef.current.opacity = 0.55 + Math.sin(t * 1.6) * 0.18;
+    if (outerMatRef.current) outerMatRef.current.opacity = 0.30 + Math.sin(t * 1.2 + 1) * 0.10;
   });
 
-  // Build a square-ish foam ribbon by combining 4 thin strips along each edge.
-  const strips = useMemo(() => {
+  // INNER strips — at the island edge
+  const innerStrips = useMemo(() => {
     const halfEdge = PLAYFIELD / 2 + 0.4;
-    const t = 0.4; // strip thickness
+    const t = 0.4;
     return [
       { pos: [0, 0,  halfEdge], scale: [PLAYFIELD + 0.8, t] },
       { pos: [0, 0, -halfEdge], scale: [PLAYFIELD + 0.8, t] },
@@ -39,17 +35,40 @@ export function FoamEdge({ stateRef }: { stateRef: React.MutableRefObject<GameRe
       { pos: [-halfEdge, 0, 0], scale: [t, PLAYFIELD + 0.8] },
     ];
   }, []);
+  // OUTER strips — at the shallow / deep-water boundary
+  const outerStrips = useMemo(() => {
+    const halfEdge = PLAYFIELD / 2 + SHALLOW_PADDING;
+    const t = 0.25;
+    return [
+      { pos: [0, 0,  halfEdge], scale: [PLAYFIELD + 2 * SHALLOW_PADDING + 1, t] },
+      { pos: [0, 0, -halfEdge], scale: [PLAYFIELD + 2 * SHALLOW_PADDING + 1, t] },
+      { pos: [ halfEdge, 0, 0], scale: [t, PLAYFIELD + 2 * SHALLOW_PADDING + 1] },
+      { pos: [-halfEdge, 0, 0], scale: [t, PLAYFIELD + 2 * SHALLOW_PADDING + 1] },
+    ];
+  }, []);
 
   return (
     <group ref={groupRef}>
-      {strips.map((s, i) => (
-        <mesh key={i} position={s.pos as any} rotation={[-Math.PI / 2, 0, 0]}>
+      {innerStrips.map((s, i) => (
+        <mesh key={`in-${i}`} position={s.pos as any} rotation={[-Math.PI / 2, 0, 0]}>
           <planeGeometry args={[s.scale[0], s.scale[1]]} />
           <meshBasicMaterial
-            ref={i === 0 ? matRef : undefined}
+            ref={i === 0 ? innerMatRef : undefined}
             color={COLORS.foamLine}
             transparent
             opacity={0.6}
+            side={THREE.DoubleSide}
+          />
+        </mesh>
+      ))}
+      {outerStrips.map((s, i) => (
+        <mesh key={`out-${i}`} position={s.pos as any} rotation={[-Math.PI / 2, 0, 0]}>
+          <planeGeometry args={[s.scale[0], s.scale[1]]} />
+          <meshBasicMaterial
+            ref={i === 0 ? outerMatRef : undefined}
+            color={COLORS.foamLine}
+            transparent
+            opacity={0.3}
             side={THREE.DoubleSide}
           />
         </mesh>
