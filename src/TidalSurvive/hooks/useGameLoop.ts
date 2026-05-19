@@ -345,10 +345,12 @@ export function useGameLoop({
     const center = tileCenter(d.playerCol, d.playerRow);
     d.playerPos.set(center.x, tileTopY(0), center.z);
 
-    // v1.5: starter plank — drifts in from the water toward a tile near
-    // the player so the very first interaction is "go grab it".
+    // v1.5: starter plank — drifts in from the water toward an edge tile
+    // near the player. v1.7.1 forces edge to make the parked position land
+    // in open water (otherwise it parks on a dry interior tile).
     if (d.tutorialStep === 'done') {
-      const startCol = Math.min(GRID - 1, d.playerCol + 2);
+      // Pick the nearest east-edge tile in the same row as the player.
+      const startCol = GRID - 1;
       const startRow = d.playerRow;
       const waterY0 = WATER_BASE_Y; // game starts at waterLevel = 0
       d.items.push(makeDriftItem(d.itemIdCounter++, 'plank', startCol, startRow, waterY0));
@@ -559,35 +561,36 @@ export function useGameLoop({
     // wet tile, dropping items into the ocean.
     if (d.time >= d.nextItemSpawnAt && d.items.length < ITEM_MAX_ACTIVE && d.tutorialStep === 'done') {
       d.nextItemSpawnAt = d.time + ITEM_SPAWN_INTERVAL_MIN + Math.random() * (ITEM_SPAWN_INTERVAL_MAX - ITEM_SPAWN_INTERVAL_MIN);
-      const dryTiles: { col: number; row: number; stack: number }[] = [];
-      let maxStack = -1;
-      let bestCol = 0, bestRow = 0;
+      // v1.7.1: items MUST target EDGE tiles so the parked position lands in
+      // open water past the island, forcing the player to wade-pickup. An
+      // interior target made the item park inside the grid on a dry tile,
+      // which felt like a normal dry-ground pickup.
+      const edgeDryTiles: { col: number; row: number }[] = [];
+      const allEdgeTiles: { col: number; row: number }[] = [];
       for (let cc = 0; cc < GRID; cc++) {
         for (let rr = 0; rr < GRID; rr++) {
-          const stack = d.heights[cc][rr];
-          const top = tileTopY(stack);
+          const isEdge = cc === 0 || cc === GRID - 1 || rr === 0 || rr === GRID - 1;
+          if (!isEdge) continue;
+          allEdgeTiles.push({ col: cc, row: rr });
+          const top = tileTopY(d.heights[cc][rr]);
           if (top > waterY + DROWN_MARGIN * 0.5) {
-            dryTiles.push({ col: cc, row: rr, stack });
-          }
-          if (stack > maxStack) {
-            maxStack = stack; bestCol = cc; bestRow = rr;
+            edgeDryTiles.push({ col: cc, row: rr });
           }
         }
       }
       let col: number, row: number;
-      if (dryTiles.length > 0) {
-        const pick = dryTiles[Math.floor(Math.random() * dryTiles.length)];
-        col = pick.col; row = pick.row;
-      } else {
-        col = bestCol; row = bestRow;
-      }
+      const pool = edgeDryTiles.length > 0 ? edgeDryTiles : allEdgeTiles;
+      const pick = pool[Math.floor(Math.random() * pool.length)];
+      col = pick.col; row = pick.row;
       const kind = pickItemKind();
       d.items.push(makeDriftItem(d.itemIdCounter++, kind, col, row, waterY));
     }
 
     // ===== TUTORIAL SCRIPTED PLANK (step 'pickup' guarantees a plank near player) =====
     if (d.tutorialStep === 'pickup' && d.tutorialItemId === null && d.items.length < ITEM_MAX_ACTIVE) {
-      const targetCol = Math.min(GRID - 1, Math.max(0, d.playerCol + 2));
+      // v1.7.1: force edge tile so the plank parks in water (consistent with
+      // the live spawn logic and the "reach into water" teaching).
+      const targetCol = GRID - 1;
       const targetRow = d.playerRow;
       const id = d.itemIdCounter++;
       d.items.push(makeDriftItem(id, 'plank', targetCol, targetRow, waterY));

@@ -46,9 +46,10 @@ export const PLAYER_SPEED_NORMAL = 8.0;
 export const PLAYER_SPEED_CARRYING_HEAVY = 4.5; // boulder
 export const PLAYER_SPEED_CARRYING_LIGHT = 7.2; // plank / paddle
 export const PLAYER_RADIUS = 0.5;
-// v1.4: 2 → 3s — give the player a real beat to spot the nearest dry tile and
-// sprint there before the shark commits to its lunge.
-export const SHARK_DELAY_IN_WATER = 3.0;
+// v1.8: 3 → 4s. Core gameplay loop is "wade into water to grab building
+// materials". Player needs a real window in water to grab+return without
+// being murdered.
+export const SHARK_DELAY_IN_WATER = 4.0;
 // Grace at game start
 export const GRACE_PERIOD = 1.5;
 
@@ -87,15 +88,15 @@ export const ITEM_FLOAT_Y_OFFSET = 0.18;
 export const SHARK_COUNT = 3;
 export const SHARK_PATROL_SPEED = 2.6;
 // Lunge speed used when the player has been in water past SHARK_DELAY.
-// v1.2 dropped 9→5; v1.4 drops 5→4 because the player usually enters water
-// right next to the nearest shark — at 5 the bite hit at ~0.8s post-grace.
-export const SHARK_LUNGE_SPEED = 4;
+// v1.8: 4 → 3 — sharks are now slow-moving threats, not instant death.
+// Player should fear lingering, not fear stepping in for 1-2s.
+export const SHARK_LUNGE_SPEED = 3;
 export const SHARK_FIN_HEIGHT = 0.18;
 export const SHARK_KILL_RADIUS = 1.3;
-// Patrol orbit radius — pushed further out in v1.2 (0.55 → 0.70) so the
-// safety buffer between the orbit and the island is bigger. The player can
-// see fins from afar but they don't crowd the playfield.
-export const SHARK_ORBIT_R = PLAYFIELD * 0.70;
+// Patrol orbit radius — v1.8: 0.70 → 0.80 of PLAYFIELD. Sharks stay even
+// further from the island so the lunge starts from further away, buying
+// more reaction time when the countdown expires.
+export const SHARK_ORBIT_R = PLAYFIELD * 0.80;
 
 // Camera — same downward tilt as Penguin Rescue but pulled in further for the
 // smaller playfield (PR was 30, we're 24). Zoom can lift slightly as the
