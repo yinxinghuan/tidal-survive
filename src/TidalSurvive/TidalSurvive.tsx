@@ -32,6 +32,8 @@ export function TidalSurvive() {
   const [tideCountdown, setTideCountdown] = useState(TIDE_INTERVAL);
   const [tideWarn, setTideWarn] = useState(false);
   const [tideEbb, setTideEbb] = useState(false);
+  const [tideTargetLevel, setTideTargetLevel] = useState(1);
+  const [waterLevelNow, setWaterLevelNow] = useState(0);
   const [sharkCountdown, setSharkCountdown] = useState<number | null>(null);
   const [startRitual, setStartRitual] = useState<'idle' | 'ready' | 'go' | 'done'>('done');
   const [tutorialStep, setTutorialStep] = useState<'move' | 'pickup' | 'drop' | 'tide' | 'done'>('done');
@@ -101,6 +103,8 @@ export function TidalSurvive() {
       setTideCountdown(remaining);
       setTideWarn(d.tutorialStep === 'done' && remaining > 0 && remaining <= TIDE_WARN_LEAD);
       setTideEbb(d.isUpcomingEbb);
+      setTideTargetLevel(d.isUpcomingEbb ? 0 : d.tideCyclePeak);
+      setWaterLevelNow(Math.round(d.waterLevel));
       // Shark countdown: seconds until shark bites, while in water
       if (d.inWaterTime > 0.05 && !d.gameOver) {
         const remain = SHARK_DELAY_IN_WATER - d.inWaterTime;
@@ -171,16 +175,26 @@ export function TidalSurvive() {
         </div>
       )}
 
-      {/* Tide countdown bar — hidden during early tutorial steps so it
-          doesn't pre-empt the lesson, then revealed for the 'tide' step. */}
+      {/* Tide countdown bar — v1.10 redesign:
+          [ ▼ 0 ]   NOW 2 → NEXT 0    1.4s
+          The big arrow + target water level tells the player at a glance
+          whether the next event is a rise/ebb and HOW HIGH it'll go. */}
       {phase === 'playing' && (tutorialStep === 'tide' || tutorialStep === 'done') && (
         <div
           className={`ts__tidebar ${tideWarn ? 'ts__tidebar--warn' : ''} ${tideEbb ? 'ts__tidebar--ebb' : ''} ${tidePulse % 2 === 0 ? 'ts__tidebar--a' : 'ts__tidebar--b'}`}
           key={tidePulse}
         >
-          <div className="ts__tidebar-label">{tideEbb ? 'EBB ↓' : (tideWarn ? 'TIDE!' : 'NEXT TIDE')}</div>
+          <div className="ts__tidebar-glyph">
+            <div className="ts__tidebar-arrow">{tideEbb ? '▼' : '▲'}</div>
+            <div className="ts__tidebar-target">{tideTargetLevel}</div>
+          </div>
           <div className="ts__tidebar-track">
             <div className="ts__tidebar-fill" style={{ width: `${tideFraction * 100}%` }} />
+            <div className="ts__tidebar-now-label">
+              <span className="ts__tidebar-now-num">{waterLevelNow}</span>
+              <span className="ts__tidebar-arrow-mid">→</span>
+              <span className="ts__tidebar-next-num">{tideTargetLevel}</span>
+            </div>
           </div>
           <div className="ts__tidebar-secs">{tideCountdown.toFixed(1)}s</div>
         </div>

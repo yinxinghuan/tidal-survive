@@ -305,7 +305,7 @@ export interface GameLoopParams {
   // Fires every frame so the parent component can read it via the state ref.
   playSfx: (key:
     | 'splash' | 'thunk' | 'thud' | 'plank_drop' | 'boulder_lift'
-    | 'paddle' | 'tide_warn' | 'tide_rise' | 'shark_roar' | 'heartbeat'
+    | 'paddle' | 'tide_warn' | 'tide_rise' | 'tide_ebb' | 'shark_roar' | 'heartbeat'
     | 'foot_dry' | 'carry_grunt' | 'ready' | 'go' | 'gull_cry' | 'game_over') => void;
   haptic?: (kind: 'light' | 'heavy') => void;
 }
@@ -420,7 +420,7 @@ export function useGameLoop({
         }
         d.tideEventCount += 1;
         d.nextTideAt += TIDE_INTERVAL;
-        playSfx(isEbb ? 'paddle' : 'tide_rise');
+        playSfx(isEbb ? 'tide_ebb' : 'tide_rise');
         onTideEvent?.();
         pushRing(d, 'tide', 0, WATER_BASE_Y + d.waterLevelTarget * WATER_Y_PER_LEVEL, 0);
         d.tideDipPhase = 0.001;

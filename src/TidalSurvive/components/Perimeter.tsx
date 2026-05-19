@@ -94,18 +94,41 @@ export function Perimeter({ stateRef }: { stateRef: React.MutableRefObject<GameR
             </group>
           );
         }
-        // wreck — a chunky broken plank cluster
+        // Wreck — weathered debris half-submerged in the sea.
+        // v1.10: visually distinguished from the warm-brown PLANK items.
+        //   - cool weathered grey-blue (sea-soaked driftwood, not fresh wood)
+        //   - heavy tilt to read as "wrecked", not "ready to use"
+        //   - sunk a bit below ground so it sits in the water, not on land
+        //   - moss/algae green accents + white barnacles
         return (
-          <group key={i} position={[p.x, 0, p.z]} rotation={[0, p.rotY, 0]} scale={p.scale}>
+          <group key={i} position={[p.x, -0.35, p.z]} rotation={[0.4, p.rotY, 0.25]} scale={p.scale}>
             <RoundedBox args={[1.8, 0.22, 0.5]} radius={0.06} smoothness={3} position={[0, 0.18, 0]} castShadow>
-              <meshStandardMaterial color="#7a4823" roughness={0.92} />
+              <meshStandardMaterial color="#5a6770" roughness={0.95} />
             </RoundedBox>
-            <RoundedBox args={[1.4, 0.2, 0.42]} radius={0.06} smoothness={3} position={[0.4, 0.36, 0.2]} rotation={[0, 0.4, 0.1]} castShadow>
-              <meshStandardMaterial color="#a86a3a" roughness={0.92} />
+            <RoundedBox args={[1.0, 0.18, 0.42]} radius={0.06} smoothness={3} position={[0.5, 0.34, 0.18]} rotation={[0, 0.8, 0.4]} castShadow>
+              <meshStandardMaterial color="#3e4a52" roughness={0.95} />
             </RoundedBox>
-            <RoundedBox args={[0.8, 0.16, 0.42]} radius={0.06} smoothness={3} position={[-0.6, 0.28, -0.1]} rotation={[0, -0.6, 0.2]} castShadow>
-              <meshStandardMaterial color="#6a3818" roughness={0.92} />
+            <RoundedBox args={[0.7, 0.16, 0.40]} radius={0.06} smoothness={3} position={[-0.65, 0.22, -0.05]} rotation={[0, -0.9, -0.3]} castShadow>
+              <meshStandardMaterial color="#7a878f" roughness={0.95} />
             </RoundedBox>
+            {/* Moss / algae accent — small green patch */}
+            <mesh position={[-0.1, 0.30, 0.18]}>
+              <boxGeometry args={[0.4, 0.05, 0.18]} />
+              <meshStandardMaterial color="#3a5e3a" roughness={0.95} />
+            </mesh>
+            {/* Barnacles — 3 tiny white-cream spheres */}
+            <mesh position={[0.35, 0.30, -0.10]}>
+              <sphereGeometry args={[0.06, 8, 6]} />
+              <meshStandardMaterial color="#e8e0c8" roughness={0.6} />
+            </mesh>
+            <mesh position={[0.10, 0.32, 0.13]}>
+              <sphereGeometry args={[0.05, 8, 6]} />
+              <meshStandardMaterial color="#e8e0c8" roughness={0.6} />
+            </mesh>
+            <mesh position={[-0.45, 0.25, 0.05]}>
+              <sphereGeometry args={[0.04, 8, 6]} />
+              <meshStandardMaterial color="#e8e0c8" roughness={0.6} />
+            </mesh>
           </group>
         );
       })}

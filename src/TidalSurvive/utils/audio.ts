@@ -9,7 +9,8 @@ type SfxKey =
   | 'boulder_lift'  // pick up boulder
   | 'paddle'        // pick up paddle (tide buffer)
   | 'tide_warn'     // 1.5s before tide — low rumble warning
-  | 'tide_rise'     // water level +1
+  | 'tide_rise'     // water level +1 (rising)
+  | 'tide_ebb'      // water level back to 0 (draining/retreating)
   | 'shark_roar'    // shark lunge / kill
   | 'heartbeat'     // in-water danger pulse
   | 'gull_cry'      // ambient seagull
@@ -175,11 +176,25 @@ export function playSfx(key: SfxKey) {
       noiseBurst(0.5, 0.12, t + 0.1, 380);
       break;
     case 'tide_rise':
-      // Low whoosh — tide swelling up
+      // Low whoosh that PITCHES UP — water surging in, breaking on top
       noiseBurst(0.85, 0.30, t, 900);
-      tone(140, 'sine', 0.75, 0.22, t, 70);
+      tone(70, 'sine', 0.85, 0.22, t, 180);   // pitch sweeps UP (rise!)
       // Crest crash on top
-      noiseBurst(0.25, 0.20, t + 0.2, 4500);
+      noiseBurst(0.25, 0.20, t + 0.25, 4500);
+      // A few bubble pops in the foam
+      bubble(t + 0.30, 800, 0.14);
+      bubble(t + 0.38, 1200, 0.12);
+      break;
+    case 'tide_ebb':
+      // Water draining/retreating — opposite of rise: pitch sweeps DOWN,
+      // gentle long sigh, small gurgles like water through pebbles.
+      tone(180, 'sine', 1.0, 0.20, t, 60);    // pitch sweeps DOWN
+      noiseBurst(0.9, 0.22, t, 600);          // wet wash receding
+      noiseBand(0.35, 0.10, t + 0.25, 240, 0.8);
+      bubble(t + 0.10, 500, 0.10);
+      bubble(t + 0.25, 380, 0.10);
+      bubble(t + 0.45, 700, 0.08);
+      bubble(t + 0.65, 420, 0.06);
       break;
     case 'heartbeat':
       // Pair of low thumps

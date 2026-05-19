@@ -110,19 +110,68 @@
     text-transform: uppercase;
     color: rgba(180, 220, 250, .85);
 
-    &-label { opacity: .8; }
+    // Big glyph at the start — arrow + target level number
+    &-glyph {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding-right: 6px;
+      border-right: 1px solid rgba(255,255,255,.12);
+    }
+    &-arrow {
+      font-size: 16px;
+      line-height: 1;
+      color: #5fb6ff;
+      text-shadow: 0 0 8px rgba(95,182,255,.55);
+    }
+    &-target {
+      font-family: 'Baloo 2', sans-serif;
+      font-weight: 800;
+      font-size: 22px;
+      color: #fff;
+      line-height: 1;
+      letter-spacing: 0;
+      min-width: 14px;
+      text-align: center;
+    }
+    // Track now also overlays a tiny "now → next" indicator
     &-track {
+      position: relative;
       width: 130px;
-      height: 6px;
-      border-radius: 3px;
-      background: rgba(255,255,255,.10);
+      height: 18px;
+      border-radius: 4px;
+      background: rgba(255,255,255,.08);
       overflow: hidden;
     }
     &-fill {
-      height: 100%;
+      position: absolute;
+      left: 0; top: 0; bottom: 0;
       background: linear-gradient(90deg, #5fb6ff 0%, #38e6ff 100%);
       box-shadow: 0 0 12px rgba(95, 182, 255, .8);
       transition: width 80ms linear;
+      opacity: .55;
+    }
+    &-now-label {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      font-family: 'Baloo 2', sans-serif;
+      font-weight: 800;
+      font-size: 11px;
+      letter-spacing: 0;
+      color: #fff;
+      text-shadow: 0 1px 2px rgba(0,0,0,.6);
+    }
+    &-arrow-mid {
+      opacity: .65;
+      font-size: 10px;
+    }
+    &-now-num, &-next-num {
+      min-width: 9px;
+      text-align: center;
     }
     &-secs {
       font-family: 'Baloo 2', sans-serif;
@@ -141,7 +190,7 @@
       border-color: rgba(255, 200, 100, .55);
       animation: ts-tide-warn 0.5s ease-in-out infinite alternate;
 
-      .ts__tidebar-label { color: #ffd370; }
+      .ts__tidebar-arrow { color: #ffe17a; text-shadow: 0 0 10px rgba(255,170,70,.8); }
       .ts__tidebar-fill {
         background: linear-gradient(90deg, #ff9544 0%, #ffe17a 100%);
         box-shadow: 0 0 16px rgba(255, 170, 70, .9);
@@ -151,7 +200,7 @@
     // EBB state — next tide will LOWER the water. Green to signal relief.
     &--ebb {
       border-color: rgba(120, 230, 150, .55);
-      .ts__tidebar-label { color: #8aff9d; letter-spacing: .15em; }
+      .ts__tidebar-arrow { color: #8aff9d; text-shadow: 0 0 10px rgba(60,200,100,.8); }
       .ts__tidebar-fill {
         background: linear-gradient(90deg, #2ec070 0%, #8aff9d 100%);
         box-shadow: 0 0 16px rgba(60, 200, 100, .9);
