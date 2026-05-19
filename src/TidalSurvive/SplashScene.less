@@ -6,69 +6,95 @@
   color: #f4f4f4;
   font-family: 'Space Grotesk', 'Inter', system-ui, sans-serif;
 
+  // ===== Sky — bruised dusk under storm =====
   &__sky {
     position: absolute;
     inset: 0;
     background:
-      radial-gradient(70% 60% at 50% 0%, #2b486a 0%, #143150 35%, #0a1a2d 70%, #050d1a 100%);
-  }
-  &__sun {
-    position: absolute;
-    top: 22%;
-    left: 50%;
-    width: 180px;
-    height: 180px;
-    margin-left: -90px;
-    border-radius: 50%;
-    background:
-      radial-gradient(circle at center, rgba(255, 200, 130, .82) 0%, rgba(255, 150, 80, .35) 35%, rgba(255, 100, 60, 0) 70%);
-    filter: blur(2px);
-    animation: ts-splash-sun 6s ease-in-out infinite alternate;
+      // Soft red sun-bleed in the upper middle (visible through cloud gap)
+      radial-gradient(40% 30% at 56% 22%, rgba(255, 130, 60, .55) 0%, rgba(255, 90, 30, .15) 30%, transparent 60%),
+      // Main dusk-to-storm vertical gradient
+      linear-gradient(180deg,
+        #2a1a2c 0%,        // muddy purple top (storm)
+        #2c1f33 12%,
+        #1e2638 30%,
+        #15263c 55%,
+        #0c1a2a 80%,
+        #050d18 100%);
   }
 
-  // Horizontal wave streaks drifting across the horizon
-  &__waves {
+  // ===== Storm clouds layer (SVG) =====
+  &__clouds {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 60%;
+    pointer-events: none;
+    opacity: .9;
+    z-index: 1;
+  }
+
+  // ===== Lightning flash =====
+  &__lightning {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, rgba(255,255,255,.0) 0%, rgba(255,255,255,.55) 18%, rgba(255,255,255,.0) 32%);
+    opacity: 0;
+    pointer-events: none;
+    animation: ts-splash-lightning 9s ease-out infinite;
+    z-index: 2;
+  }
+
+  // ===== Rain streaks =====
+  &__rain {
     position: absolute;
     inset: 0;
     pointer-events: none;
+    z-index: 2;
   }
-  &__wave {
+  &__raindrop {
     position: absolute;
-    left: -10%;
-    width: 30%;
-    height: 2px;
-    background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,.7) 50%, transparent 100%);
-    border-radius: 2px;
-    animation-name: ts-splash-wave;
+    top: -10%;
+    width: 1.5px;
+    background: linear-gradient(180deg, rgba(180, 210, 240, 0), rgba(220, 240, 255, .9));
+    border-radius: 1px;
+    animation-name: ts-splash-rainfall;
     animation-timing-function: linear;
     animation-iteration-count: infinite;
+    transform: rotate(-12deg);
   }
 
-  // Island silhouette
-  &__island {
+  // ===== Ocean layer with atoll =====
+  &__ocean {
     position: absolute;
     left: 0;
     right: 0;
-    bottom: 16%;
-    height: 30%;
+    bottom: 12%;  // raise so the atoll sits in the lower-middle, sharks visible
+    height: 60%;
     pointer-events: none;
+    z-index: 3;
     svg { width: 100%; height: 100%; display: block; overflow: visible; }
-    filter: drop-shadow(0 12px 22px rgba(0,0,0,.55));
+    filter: drop-shadow(0 12px 24px rgba(0,0,0,.65));
   }
 
-  // Bottom vignette — reads as "deep ocean shadow" foreground
+  // ===== Vignette — frame title without crushing the foreground sharks =====
   &__vignette {
     position: absolute;
     inset: 0;
     pointer-events: none;
+    z-index: 4;
     background:
+      radial-gradient(70% 50% at 50% 38%, transparent 0%, transparent 35%, rgba(5,12,22,.35) 95%),
       linear-gradient(180deg,
-        rgba(0,0,0,0) 0%,
-        rgba(0,0,0,0) 50%,
-        rgba(5,12,25,.65) 88%,
-        rgba(5,12,25,.85) 100%);
+        rgba(5,12,25,.30) 0%,
+        rgba(5,12,25,0) 18%,
+        rgba(5,12,25,0) 80%,
+        rgba(5,12,25,.25) 96%,
+        rgba(5,12,25,.45) 100%);
   }
 
+  // ===== Foreground content (title + CTA) =====
   &__content {
     position: absolute;
     inset: 0;
@@ -76,14 +102,15 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start;
     padding: 24px;
-    padding-bottom: max(48px, env(safe-area-inset-bottom, 24px));
+    padding-top: max(56px, env(safe-area-inset-top, 24px));
+    padding-bottom: max(40px, env(safe-area-inset-bottom, 24px));
     text-align: center;
   }
 
   &__title {
-    margin: 0 0 18px;
+    margin: 0 0 14px;
     font-family: 'Baloo 2', 'Space Grotesk', system-ui, sans-serif;
     font-size: clamp(76px, 22vw, 124px);
     font-weight: 800;
@@ -94,8 +121,8 @@
     align-items: center;
     text-shadow:
       0 4px 0  rgba(255,255,255,.04),
-      0 8px 32px rgba(50, 150, 220, .45),
-      0 0 90px  rgba(120, 200, 255, .22);
+      0 8px 32px rgba(50, 30, 60, .65),
+      0 0 90px  rgba(255, 140, 80, .25);
   }
   &__title-emph {
     background: linear-gradient(180deg, #ffffff 0%, #c4dbeb 70%, #8eb3cc 100%);
@@ -103,11 +130,11 @@
     background-clip: text;
     color: transparent;
     &--accent {
-      background: linear-gradient(180deg, #ffe17a 0%, #ff9844 100%);
+      background: linear-gradient(180deg, #ffe17a 0%, #ff7a3a 60%, #c14a26 100%);
       -webkit-background-clip: text;
       background-clip: text;
       color: transparent;
-      filter: drop-shadow(0 4px 14px rgba(255,170,60,.4));
+      filter: drop-shadow(0 4px 18px rgba(255,120,60,.45));
     }
   }
   &__subtitle {
@@ -117,114 +144,14 @@
     font-weight: 500;
     letter-spacing: .18em;
     text-transform: uppercase;
-    color: rgba(180, 220, 250, .65);
+    color: rgba(220, 200, 170, .72);
     white-space: normal;
     max-width: 420px;
     word-break: break-word;
   }
 
-  // ===== Demo strip: 3 tiles, sailor sprite, plank — 4s loop =====
-  &__demo {
-    margin: 8px 0 28px;
-    width: 280px;
-    max-width: 90vw;
-    padding: 14px 0 12px;
-    border-radius: 16px;
-    background: linear-gradient(180deg, rgba(10, 22, 38, .55), rgba(8, 18, 30, .65));
-    border: 1px solid rgba(150, 200, 240, .12);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 8px;
-  }
-  &__demo-row {
-    position: relative;
-    width: 240px;
-    height: 76px;
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-end;
-  }
-  &__demo-tile {
-    width: 64px;
-    height: 30px;
-    position: relative;
-    display: flex;
-    align-items: flex-end;
-    justify-content: center;
-  }
-  &__demo-block {
-    width: 100%;
-    height: 22px;
-    border-radius: 5px;
-    background: linear-gradient(180deg, #e6cf9c 0%, #c8ad75 100%);
-    box-shadow: 0 2px 0 rgba(0,0,0,.25);
-  }
-  // Middle tile grows: a second block fades+pops in mid-cycle
-  &__demo-tile--grow .ts-splash__demo-block--grown {
-    position: absolute;
-    bottom: 22px;
-    width: 100%;
-    height: 14px;
-    background: linear-gradient(180deg, #8a8278 0%, #56504a 100%);
-    border-radius: 5px;
-    opacity: 0;
-    transform: scaleY(0);
-    transform-origin: bottom;
-    animation: ts-splash-demo-grown 4s ease-in-out infinite;
-  }
-  &__demo-plank {
-    position: absolute;
-    left: 50%;
-    bottom: 22px;
-    width: 56px;
-    height: 8px;
-    transform: translateX(-50%);
-    background: linear-gradient(180deg, #a86a3a 0%, #7a4823 100%);
-    border-radius: 3px;
-    box-shadow: 0 2px 6px rgba(0,0,0,.5);
-    animation: ts-splash-demo-plank 4s ease-in-out infinite;
-  }
-  &__demo-sailor {
-    position: absolute;
-    bottom: 22px;
-    width: 18px;
-    height: 32px;
-    left: 0;
-    animation: ts-splash-demo-sailor 4s ease-in-out infinite;
-  }
-  &__demo-sailor-body {
-    width: 100%;
-    height: 100%;
-    border-radius: 5px;
-    background: linear-gradient(180deg, #ff8b3a 0%, #c25e1c 50%, #21314a 50%, #1b2540 100%);
-    box-shadow: 0 3px 6px rgba(0,0,0,.5);
-  }
-  &__demo-sailor-held {
-    position: absolute;
-    top: -10px;
-    left: -8px;
-    width: 34px;
-    height: 6px;
-    background: linear-gradient(180deg, #a86a3a 0%, #7a4823 100%);
-    border-radius: 2px;
-    opacity: 0;
-    animation: ts-splash-demo-held 4s ease-in-out infinite;
-  }
-  &__demo-caption {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 10px;
-    letter-spacing: .14em;
-    text-transform: uppercase;
-    color: rgba(180, 220, 250, .7);
-    text-align: center;
-    padding: 0 12px;
-  }
-
   &__best {
-    margin-bottom: 24px;
+    margin: auto 0 18px;
     padding: 6px 18px;
     display: inline-flex;
     align-items: baseline;
@@ -252,6 +179,7 @@
 
   &__cta {
     position: relative;
+    margin-top: auto;
     background: linear-gradient(135deg, #ffe17a 0%, #ff9844 60%, #ff6b3a 100%);
     color: #1a1a1a;
     border: none;
@@ -264,7 +192,7 @@
     text-transform: uppercase;
     cursor: pointer;
     box-shadow:
-      0 18px 40px rgba(255, 150, 60, .48),
+      0 18px 40px rgba(255, 100, 50, .50),
       inset 0 1px 0 rgba(255,255,255,.65);
     z-index: 1;
     transition: transform .15s ease;
@@ -283,54 +211,23 @@
   }
 }
 
-@keyframes ts-splash-wave {
-  0%   { transform: translateX(0);     opacity: 0; }
-  10%  { opacity: 1; }
-  90%  { opacity: 1; }
-  100% { transform: translateX(400%);  opacity: 0; }
-}
-@keyframes ts-splash-sun {
-  0%   { transform: scale(1.0); opacity: .8; }
-  100% { transform: scale(1.06); opacity: 1.0; }
-}
 @keyframes ts-splash-cta-pulse {
   0%   { transform: scale(.96); opacity: .9; }
   100% { transform: scale(1.22); opacity: 0; }
 }
 
-// ===== Demo loop keyframes (4s cycle) =====
-// 0.0s   sailor at tile 0 (left)
-// 0.0–1.0s  sailor walks right to tile 2 (plank)
-// 1.0s   pickup → plank vanishes, held plank appears
-// 1.0–2.0s  sailor walks left to tile 1 (middle)
-// 2.0s   drop → middle block "grown" appears, held plank hides
-// 2.0–3.5s  pause showing the new stack (player on top of tile 1)
-// 3.5–4.0s  fade reset back to tile 0
+@keyframes ts-splash-rainfall {
+  0%   { transform: translateY(-10%) rotate(-12deg); opacity: 0; }
+  10%  { opacity: 1; }
+  90%  { opacity: 1; }
+  100% { transform: translateY(120vh) rotate(-12deg); opacity: 0; }
+}
 
-@keyframes ts-splash-demo-sailor {
-  0%   { left: 0px; }
-  25%  { left: 200px; }       // walked to plank tile
-  35%  { left: 200px; bottom: 30px; } // mini bounce on pickup
-  50%  { left: 100px; bottom: 22px; } // walked back to middle
-  60%  { left: 100px; bottom: 36px; } // perched on new stack
-  88%  { left: 100px; bottom: 36px; }
-  100% { left: 0px; bottom: 22px; }
-}
-@keyframes ts-splash-demo-plank {
-  0%, 24%   { opacity: 1; }
-  25%       { opacity: 0; }   // picked up
-  100%      { opacity: 0; }   // reset at end of cycle
-}
-@keyframes ts-splash-demo-held {
-  0%, 24%   { opacity: 0; }
-  25%, 50%  { opacity: 1; }
-  51%       { opacity: 0; }   // dropped
+@keyframes ts-splash-lightning {
+  0%, 88%   { opacity: 0; }
+  89%       { opacity: .9; }
+  90%       { opacity: 0; }
+  91%       { opacity: .7; }
+  92%       { opacity: 0; }
   100%      { opacity: 0; }
-}
-@keyframes ts-splash-demo-grown {
-  0%, 50%   { opacity: 0; transform: scaleY(0); }
-  52%       { opacity: 1; transform: scaleY(1.2); }
-  58%       { transform: scaleY(1.0); }
-  88%       { opacity: 1; transform: scaleY(1.0); }
-  100%      { opacity: 0; transform: scaleY(0); }
 }
