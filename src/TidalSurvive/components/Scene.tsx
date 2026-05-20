@@ -121,9 +121,10 @@ function RingFX({ state }: { state: React.MutableRefObject<GameRef> }) {
   );
 }
 
-// Airborne dust puff sprite. Position is derived each frame from the puff's
-// initial velocity + gravity, so the game loop never touches it. The sprite
-// faces the camera, grows in fast, then fades out as it settles back down.
+// Lowpoly dust bubble. Same low-segment sphere style as the water foam
+// bubbles, so the whole game's particle vocabulary reads as one piece.
+// Position is derived each frame from initial velocity + gravity (game loop
+// never touches it). Grows from 0 → size, drifts, then fades.
 const PUFF_G = -3.2;   // m/s² downward — lighter than real for a floaty feel
 
 function Puff({ puff, stateRef }: {
@@ -134,57 +135,38 @@ function Puff({ puff, stateRef }: {
   };
   stateRef: React.MutableRefObject<GameRef>;
 }) {
-  const ref = useRef<THREE.Sprite>(null);
-  const matRef = useRef<THREE.SpriteMaterial>(null);
+  const meshRef = useRef<THREE.Mesh>(null);
+  const matRef = useRef<THREE.MeshBasicMaterial>(null);
   useFrame(() => {
-    const sp = ref.current; if (!sp || !matRef.current) return;
+    const m = meshRef.current; if (!m || !matRef.current) return;
     const t = stateRef.current.time - puff.startTime;
     if (t < 0) return;
-    // x/z: linear-decay outward drift over the puff's life
     const decay = Math.max(0, 1 - t / (puff.life * 1.2));
     const px = puff.worldX + puff.vx * t * (0.4 + 0.6 * decay);
     const pz = puff.worldZ + puff.vz * t * (0.4 + 0.6 * decay);
-    // y: ballistic, clamped to ground so it settles
     const py = Math.max(puff.worldY, puff.worldY + puff.vy * t + 0.5 * PUFF_G * t * t);
-    sp.position.set(px, py, pz);
+    m.position.set(px, py, pz);
     const u = Math.min(1, t / puff.life);
-    const grow = u < 0.25 ? u / 0.25 : 1;
-    const scale = puff.size * (0.7 + grow * 1.4);
-    sp.scale.set(scale, scale, scale);
-    matRef.current.opacity = (1 - Math.pow(u, 1.4)) * 0.85;
+    // grow in fast (0 → puff.size over first 30%), then hold size, then fade opacity
+    const grow = u < 0.3 ? u / 0.3 : 1;
+    const s = grow * puff.size;
+    m.scale.set(s, s, s);
+    const fade = u < 0.45 ? 1 : 1 - (u - 0.45) / 0.55;
+    matRef.current.opacity = fade * 0.9;
   });
   return (
-    <sprite ref={ref} position={[puff.worldX, puff.worldY, puff.worldZ]}>
-      <spriteMaterial
+    <mesh ref={meshRef} position={[puff.worldX, puff.worldY, puff.worldZ]}>
+      <sphereGeometry args={[1, 8, 6]} />
+      <meshBasicMaterial
         ref={matRef}
-        map={DUST_TEXTURE}
         color={puff.color}
         transparent
         depthWrite={false}
         opacity={0}
       />
-    </sprite>
+    </mesh>
   );
 }
-
-// Soft radial puff texture, generated once on a canvas. White centre fading
-// to transparent — tinted per-puff via spriteMaterial.color.
-const DUST_TEXTURE: THREE.CanvasTexture = (() => {
-  const SIZE = 128;
-  const c = document.createElement('canvas');
-  c.width = SIZE; c.height = SIZE;
-  const ctx = c.getContext('2d')!;
-  const g = ctx.createRadialGradient(SIZE / 2, SIZE / 2, 0, SIZE / 2, SIZE / 2, SIZE / 2);
-  g.addColorStop(0,    'rgba(255,255,255,1)');
-  g.addColorStop(0.35, 'rgba(255,255,255,0.65)');
-  g.addColorStop(0.75, 'rgba(255,255,255,0.18)');
-  g.addColorStop(1,    'rgba(255,255,255,0)');
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, SIZE, SIZE);
-  const tex = new THREE.CanvasTexture(c);
-  tex.needsUpdate = true;
-  return tex;
-})();
 
 function PuffFX({ state }: { state: React.MutableRefObject<GameRef> }) {
   const [, force] = useState(0);
