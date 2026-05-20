@@ -121,6 +121,90 @@ function RingFX({ state }: { state: React.MutableRefObject<GameRef> }) {
   );
 }
 
+// Airborne dust puff sprite. Position is derived each frame from the puff's
+// initial velocity + gravity, so the game loop never touches it. The sprite
+// faces the camera, grows in fast, then fades out as it settles back down.
+const PUFF_G = -3.2;   // m/s² downward — lighter than real for a floaty feel
+
+function Puff({ puff, stateRef }: {
+  puff: {
+    id: number; worldX: number; worldY: number; worldZ: number;
+    vx: number; vy: number; vz: number; startTime: number;
+    size: number; life: number; color: string;
+  };
+  stateRef: React.MutableRefObject<GameRef>;
+}) {
+  const ref = useRef<THREE.Sprite>(null);
+  const matRef = useRef<THREE.SpriteMaterial>(null);
+  useFrame(() => {
+    const sp = ref.current; if (!sp || !matRef.current) return;
+    const t = stateRef.current.time - puff.startTime;
+    if (t < 0) return;
+    // x/z: linear-decay outward drift over the puff's life
+    const decay = Math.max(0, 1 - t / (puff.life * 1.2));
+    const px = puff.worldX + puff.vx * t * (0.4 + 0.6 * decay);
+    const pz = puff.worldZ + puff.vz * t * (0.4 + 0.6 * decay);
+    // y: ballistic, clamped to ground so it settles
+    const py = Math.max(puff.worldY, puff.worldY + puff.vy * t + 0.5 * PUFF_G * t * t);
+    sp.position.set(px, py, pz);
+    const u = Math.min(1, t / puff.life);
+    const grow = u < 0.25 ? u / 0.25 : 1;
+    const scale = puff.size * (0.7 + grow * 1.4);
+    sp.scale.set(scale, scale, scale);
+    matRef.current.opacity = (1 - Math.pow(u, 1.4)) * 0.85;
+  });
+  return (
+    <sprite ref={ref} position={[puff.worldX, puff.worldY, puff.worldZ]}>
+      <spriteMaterial
+        ref={matRef}
+        map={DUST_TEXTURE}
+        color={puff.color}
+        transparent
+        depthWrite={false}
+        opacity={0}
+      />
+    </sprite>
+  );
+}
+
+// Soft radial puff texture, generated once on a canvas. White centre fading
+// to transparent — tinted per-puff via spriteMaterial.color.
+const DUST_TEXTURE: THREE.CanvasTexture = (() => {
+  const SIZE = 128;
+  const c = document.createElement('canvas');
+  c.width = SIZE; c.height = SIZE;
+  const ctx = c.getContext('2d')!;
+  const g = ctx.createRadialGradient(SIZE / 2, SIZE / 2, 0, SIZE / 2, SIZE / 2, SIZE / 2);
+  g.addColorStop(0,    'rgba(255,255,255,1)');
+  g.addColorStop(0.35, 'rgba(255,255,255,0.65)');
+  g.addColorStop(0.75, 'rgba(255,255,255,0.18)');
+  g.addColorStop(1,    'rgba(255,255,255,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, SIZE, SIZE);
+  const tex = new THREE.CanvasTexture(c);
+  tex.needsUpdate = true;
+  return tex;
+})();
+
+function PuffFX({ state }: { state: React.MutableRefObject<GameRef> }) {
+  const [, force] = useState(0);
+  const lastCount = useRef(-1);
+  useFrame(() => {
+    const len = state.current.dustPuffs.length;
+    if (len !== lastCount.current) {
+      lastCount.current = len;
+      force(x => x + 1);
+    }
+  });
+  return (
+    <>
+      {state.current.dustPuffs.map(p => (
+        <Puff key={p.id} puff={p} stateRef={state} />
+      ))}
+    </>
+  );
+}
+
 // Cone marker hovering over the tutorial drop-target tile
 function DropTargetMarker({ state }: { state: React.MutableRefObject<GameRef> }) {
   const ref = useRef<THREE.Group>(null);
@@ -294,6 +378,7 @@ export function Scene({
       <Birds stateRef={state} />
       <ActorSync state={state} carryingRef={carryingRef} />
       <RingFX state={state} />
+      <PuffFX state={state} />
       <BubbleFX stateRef={state} />
       <DropTargetMarker state={state} />
     </>

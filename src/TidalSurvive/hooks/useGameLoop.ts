@@ -11,7 +11,7 @@ import {
   SHARK_COUNT, SHARK_PATROL_SPEED, SHARK_LUNGE_SPEED, SHARK_KILL_RADIUS, SHARK_ORBIT_R,
   BIRD_COUNT, HEIGHT_BONUS, BOARD_DROWN_BUFFER, SHALLOW_PADDING, MAX_CLIMB_LAYERS,
 } from '../constants';
-import type { Item, ItemKind, Shark, Bird, Stick, Pellet, DustRing, Bubble, TutorialStep } from '../types';
+import type { Item, ItemKind, Shark, Bird, Stick, Pellet, DustRing, Bubble, DustPuff, TutorialStep } from '../types';
 
 // World ↔ grid helpers. The grid is centered on origin.
 // Tile (col, row): col=0..GRID-1 left→right (x), row=0..GRID-1 back→front (z).
@@ -96,6 +96,8 @@ export interface GameRef {
   pellets: Pellet[];
   dustRings: DustRing[];
   bubbles: Bubble[];
+  dustPuffs: DustPuff[];
+  puffId: number;
   pelletId: number;
   ringId: number;
   bubbleId: number;
@@ -167,6 +169,8 @@ export function createGameState(tutorialEnabled = false): GameRef {
     pellets: [],
     dustRings: [],
     bubbles: [],
+    dustPuffs: [],
+    puffId: 0,
     pelletId: 1,
     ringId: 1,
     bubbleId: 1,
@@ -272,6 +276,42 @@ function pushRing(d: GameRef, kind: 'dust' | 'splash' | 'tide', x: number, y: nu
     startTime: d.time,
   });
   if (d.dustRings.length > 16) d.dustRings.shift();
+}
+
+// Throw up a burst of airborne dust puffs at (x, y, z). About 1/3 are fine
+// warm-white "airborne" specks; 2/3 are heavier sand-beige clumps that fall
+// back to the ground faster (heavier = slower upward, shorter life).
+// Boulder drops get a bigger, dustier burst than planks.
+function pushPuffs(d: GameRef, x: number, y: number, z: number, heavy: boolean) {
+  const count = heavy ? 22 : 10;
+  const SAND = ['#e2cf9c', '#d8c187', '#ead8a9'];
+  const WHITE = ['#f7efe0', '#f9f4e7', '#ffffff'];
+  for (let i = 0; i < count; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const isFine = Math.random() < 0.35;                    // white airborne speck
+    const speed = (isFine ? 0.7 : 0.5) + Math.random() * (heavy ? 1.8 : 1.3);
+    const lift  = (isFine ? 0.8 : 0.45) + Math.random() * (heavy ? 1.1 : 0.85);
+    d.dustPuffs.push({
+      id: d.puffId++,
+      worldX: x + Math.cos(a) * 0.05,
+      worldY: y + 0.02,
+      worldZ: z + Math.sin(a) * 0.05,
+      vx: Math.cos(a) * speed,
+      vy: lift,
+      vz: Math.sin(a) * speed,
+      startTime: d.time,
+      size: isFine
+        ? 0.06 + Math.random() * 0.08
+        : 0.12 + Math.random() * 0.12,
+      life: isFine
+        ? 0.65 + Math.random() * 0.35
+        : 0.45 + Math.random() * 0.30,
+      color: isFine
+        ? WHITE[(Math.random() * WHITE.length) | 0]
+        : SAND[(Math.random() * SAND.length) | 0],
+    });
+  }
+  if (d.dustPuffs.length > 220) d.dustPuffs.splice(0, d.dustPuffs.length - 220);
 }
 
 // Scatter a cluster of white foam bubbles around (x, y, z). Each bubble has
@@ -736,6 +776,7 @@ export function useGameLoop({
         const newTop = tileTopY(d.heights[onTile.col][onTile.row]);
         pushPellet(d, 'height', `+${gain * HEIGHT_BONUS}`, center.x, newTop + 0.6, center.z);
         pushRing(d, 'dust', center.x, GROUND_Y, center.z);
+        pushPuffs(d, center.x, GROUND_Y, center.z, d.carrying === 'boulder');
         shake(d, d.carrying === 'boulder' ? 0.35 : 0.18);
         d.carrying = null;
         // Tutorial advance
@@ -886,6 +927,7 @@ export function useGameLoop({
     while (d.pellets.length && d.time - d.pellets[0].startTime > pelletLife) d.pellets.shift();
     while (d.dustRings.length && d.time - d.dustRings[0].startTime > ringLife) d.dustRings.shift();
     while (d.bubbles.length && d.time - d.bubbles[0].startTime > d.bubbles[0].life) d.bubbles.shift();
+    while (d.dustPuffs.length && d.time - d.dustPuffs[0].startTime > d.dustPuffs[0].life) d.dustPuffs.shift();
 
     // ===== SCORE =====
     const newScore = Math.floor(d.time) + d.maxHeightReached * HEIGHT_BONUS;

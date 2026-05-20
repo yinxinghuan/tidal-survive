@@ -85,6 +85,20 @@ export interface Bubble {
   life: number;
 }
 
+// Airborne dust puff thrown up when a plank/boulder is dropped. Lives ~0.5-
+// 0.9s, drifts outward + upward then falls back to the ground via gravity.
+// Rendered as a soft camera-facing sprite. State is immutable — Scene derives
+// the current position from (initial pos + vel*t + 0.5*g*t²) each frame.
+export interface DustPuff {
+  id: number;
+  worldX: number; worldY: number; worldZ: number;
+  vx: number; vy: number; vz: number;
+  startTime: number;
+  size: number;          // base radius (m)
+  life: number;          // total lifetime in seconds
+  color: string;         // hex
+}
+
 // Active tutorial step
 export type TutorialStep = 'move' | 'pickup' | 'drop' | 'tide' | 'done';
 
