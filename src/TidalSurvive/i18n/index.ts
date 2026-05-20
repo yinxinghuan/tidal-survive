@@ -25,6 +25,7 @@ const dict: Record<Locale, Record<string, string>> = {
     tut_pickup:   '木板正漂过来 — 走过去自动捡起',
     tut_drop:     '走到金光柱位置，轻点屏幕放下',
     tut_tide:     '潮水正在上涨 — 垒高才能活下去',
+    tap_to_drop:  '轻点屏幕放下',
   },
   en: {
     title: 'Tidal Survive',
@@ -44,6 +45,7 @@ const dict: Record<Locale, Record<string, string>> = {
     tut_pickup:   'A PLANK IS DRIFTING IN — WALK TO IT',
     tut_drop:     'WALK TO THE BEACON · TAP TO DROP',
     tut_tide:     'WATER IS RISING — STACK TO STAY DRY',
+    tap_to_drop:  'TAP TO DROP',
   },
 };
 
