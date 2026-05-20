@@ -322,23 +322,22 @@ function pushPuffs(d: GameRef, x: number, y: number, z: number, heavy: boolean) 
 function pushFootDust(d: GameRef, x: number, y: number, z: number, backX: number, backZ: number) {
   const FOOT = ['#dccaa0', '#cfba8d', '#e8d8b0'];
   const PALE = ['#f6ecd2', '#fbf4dc', '#ffffff'];
-  const n = 2 + ((Math.random() * 2) | 0);  // 2 or 3
+  const n = 1 + ((Math.random() * 2) | 0);  // 1 or 2 — short, single puff per step
   for (let i = 0; i < n; i++) {
     const isPale = Math.random() < 0.45;
-    const spread = 0.25 + Math.random() * 0.35;
-    const ang = Math.atan2(backZ, backX) + (Math.random() - 0.5) * 0.9;
+    const spread = 0.10 + Math.random() * 0.18;       // less outward drift
+    const ang = Math.atan2(backZ, backX) + (Math.random() - 0.5) * 0.7;
     const vx = Math.cos(ang) * spread;
     const vz = Math.sin(ang) * spread;
     d.dustPuffs.push({
       id: d.puffId++,
-      worldX: x + Math.cos(ang) * 0.08,
-      worldY: y + 0.06,
-      worldZ: z + Math.sin(ang) * 0.08,
-      vx, vy: 0.35 + Math.random() * 0.35, vz,
+      worldX: x + Math.cos(ang) * 0.06,
+      worldY: y + 0.05,
+      worldZ: z + Math.sin(ang) * 0.06,
+      vx, vy: 0.18 + Math.random() * 0.22, vz,    // gentler lift
       startTime: d.time,
-      // bumped: was 0.04-0.12 — too small to see; now 0.10-0.26
-      size: isPale ? 0.10 + Math.random() * 0.08 : 0.14 + Math.random() * 0.12,
-      life: 0.5 + Math.random() * 0.35,
+      size: isPale ? 0.10 + Math.random() * 0.08 : 0.14 + Math.random() * 0.10,
+      life: 0.22 + Math.random() * 0.16,           // quick puff, no trail
       color: isPale
         ? PALE[(Math.random() * PALE.length) | 0]
         : FOOT[(Math.random() * FOOT.length) | 0],
