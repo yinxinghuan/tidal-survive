@@ -321,23 +321,24 @@ function pushPuffs(d: GameRef, x: number, y: number, z: number, heavy: boolean) 
 // as ambient texture, not impact.
 function pushFootDust(d: GameRef, x: number, y: number, z: number, backX: number, backZ: number) {
   const FOOT = ['#dccaa0', '#cfba8d', '#e8d8b0'];
-  const PALE = ['#f3ead6', '#f8f1de'];
-  const n = 1 + ((Math.random() * 2) | 0);  // 1 or 2
+  const PALE = ['#f6ecd2', '#fbf4dc', '#ffffff'];
+  const n = 2 + ((Math.random() * 2) | 0);  // 2 or 3
   for (let i = 0; i < n; i++) {
-    const isPale = Math.random() < 0.35;
-    const spread = 0.15 + Math.random() * 0.2;
-    const ang = Math.atan2(backZ, backX) + (Math.random() - 0.5) * 0.8;
+    const isPale = Math.random() < 0.45;
+    const spread = 0.25 + Math.random() * 0.35;
+    const ang = Math.atan2(backZ, backX) + (Math.random() - 0.5) * 0.9;
     const vx = Math.cos(ang) * spread;
     const vz = Math.sin(ang) * spread;
     d.dustPuffs.push({
       id: d.puffId++,
-      worldX: x + Math.cos(ang) * 0.06,
-      worldY: y + 0.02,
-      worldZ: z + Math.sin(ang) * 0.06,
-      vx, vy: 0.15 + Math.random() * 0.2, vz,
+      worldX: x + Math.cos(ang) * 0.08,
+      worldY: y + 0.06,
+      worldZ: z + Math.sin(ang) * 0.08,
+      vx, vy: 0.35 + Math.random() * 0.35, vz,
       startTime: d.time,
-      size: isPale ? 0.04 + Math.random() * 0.04 : 0.06 + Math.random() * 0.06,
-      life: 0.35 + Math.random() * 0.25,
+      // bumped: was 0.04-0.12 — too small to see; now 0.10-0.26
+      size: isPale ? 0.10 + Math.random() * 0.08 : 0.14 + Math.random() * 0.12,
+      life: 0.5 + Math.random() * 0.35,
       color: isPale
         ? PALE[(Math.random() * PALE.length) | 0]
         : FOOT[(Math.random() * FOOT.length) | 0],
@@ -603,7 +604,7 @@ export function useGameLoop({
       const stepLen = Math.hypot(dxStep, dzStep);
       if (stepLen > 0.0008 && !inWater && !d.gameOver && d.startRitual === 'done') {
         d.walkStrideAccum += stepLen;
-        const STRIDE = 0.5;
+        const STRIDE = 0.32;          // emit every ~0.32m of travel — visible cadence while walking
         if (d.walkStrideAccum >= STRIDE) {
           d.walkStrideAccum -= STRIDE;
           // backward kick direction = opposite the movement
