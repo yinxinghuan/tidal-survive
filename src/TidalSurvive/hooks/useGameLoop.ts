@@ -98,6 +98,7 @@ export interface GameRef {
   bubbles: Bubble[];
   dustPuffs: DustPuff[];
   puffId: number;
+  walkStrideAccum: number;
   pelletId: number;
   ringId: number;
   bubbleId: number;
@@ -171,6 +172,7 @@ export function createGameState(tutorialEnabled = false): GameRef {
     bubbles: [],
     dustPuffs: [],
     puffId: 0,
+    walkStrideAccum: 0,
     pelletId: 1,
     ringId: 1,
     bubbleId: 1,
@@ -309,6 +311,36 @@ function pushPuffs(d: GameRef, x: number, y: number, z: number, heavy: boolean) 
       color: isFine
         ? WHITE[(Math.random() * WHITE.length) | 0]
         : SAND[(Math.random() * SAND.length) | 0],
+    });
+  }
+  if (d.dustPuffs.length > 220) d.dustPuffs.splice(0, d.dustPuffs.length - 220);
+}
+
+// Faint footstep dust — 1-2 small puffs kicked backward at the player's feet
+// as they walk. Way smaller / shorter-lived than the drop burst so it reads
+// as ambient texture, not impact.
+function pushFootDust(d: GameRef, x: number, y: number, z: number, backX: number, backZ: number) {
+  const FOOT = ['#dccaa0', '#cfba8d', '#e8d8b0'];
+  const PALE = ['#f3ead6', '#f8f1de'];
+  const n = 1 + ((Math.random() * 2) | 0);  // 1 or 2
+  for (let i = 0; i < n; i++) {
+    const isPale = Math.random() < 0.35;
+    const spread = 0.15 + Math.random() * 0.2;
+    const ang = Math.atan2(backZ, backX) + (Math.random() - 0.5) * 0.8;
+    const vx = Math.cos(ang) * spread;
+    const vz = Math.sin(ang) * spread;
+    d.dustPuffs.push({
+      id: d.puffId++,
+      worldX: x + Math.cos(ang) * 0.06,
+      worldY: y + 0.02,
+      worldZ: z + Math.sin(ang) * 0.06,
+      vx, vy: 0.15 + Math.random() * 0.2, vz,
+      startTime: d.time,
+      size: isPale ? 0.04 + Math.random() * 0.04 : 0.06 + Math.random() * 0.06,
+      life: 0.35 + Math.random() * 0.25,
+      color: isPale
+        ? PALE[(Math.random() * PALE.length) | 0]
+        : FOOT[(Math.random() * FOOT.length) | 0],
     });
   }
   if (d.dustPuffs.length > 220) d.dustPuffs.splice(0, d.dustPuffs.length - 220);
@@ -502,6 +534,8 @@ export function useGameLoop({
     // current tile, reject the move on that axis (player "slips" off the
     // sheer face) and stays put on that component. Going down or onto a
     // tile of similar height is fine.
+    const prevX = d.playerPos.x;
+    const prevZ = d.playerPos.z;
     const speed = carrySpeed(d.carrying);
     if (stick.active) {
       const dir = new THREE.Vector3(stick.x, 0, stick.y);
@@ -558,6 +592,28 @@ export function useGameLoop({
       if (!beyondShallowX && !beyondShallowZ) inShallow = true;
     }
     d.playerPos.y += (standY - d.playerPos.y) * Math.min(1, c * 12);
+
+    // ===== FOOTSTEP DUST =====
+    // Every ~0.5m walked on solid ground, kick up 1-2 tiny puffs behind the
+    // player. Suppressed in water, during the start ritual, and on the
+    // game-over frame so we never trail dust through a wave.
+    {
+      const dxStep = d.playerPos.x - prevX;
+      const dzStep = d.playerPos.z - prevZ;
+      const stepLen = Math.hypot(dxStep, dzStep);
+      if (stepLen > 0.0008 && !inWater && !d.gameOver && d.startRitual === 'done') {
+        d.walkStrideAccum += stepLen;
+        const STRIDE = 0.5;
+        if (d.walkStrideAccum >= STRIDE) {
+          d.walkStrideAccum -= STRIDE;
+          // backward kick direction = opposite the movement
+          pushFootDust(d, d.playerPos.x, standY, d.playerPos.z, -dxStep / stepLen, -dzStep / stepLen);
+        }
+      } else if (stepLen <= 0.0008) {
+        // standing still — bleed accumulator so the next step doesn't insta-emit
+        d.walkStrideAccum = Math.max(0, d.walkStrideAccum - c * 0.4);
+      }
+    }
 
     // Track in-water time (only after the start ritual is past)
     // v1.9: SHALLOW water doesn't accumulate inWaterTime. The shark threat
