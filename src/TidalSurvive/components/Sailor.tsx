@@ -14,13 +14,16 @@ interface SailorProps {
 export function Sailor({ carryingRef, stateRef }: SailorProps) {
   const bounceRef = useRef<THREE.Group>(null);
   const leanRef = useRef<THREE.Group>(null);
-  const phase = useRef(Math.random() * Math.PI * 2);
   const heldRef = useRef<THREE.Group>(null);
 
-  useFrame(({ clock }) => {
+  useFrame(() => {
     const kind = carryingRef?.current ?? null;
+    // Drive the hop off the game-loop clock (no per-instance random phase) so
+    // the dust spawner in useGameLoop can land each puff on the exact moment
+    // the foot hits the ground.
+    const gt = stateRef?.current.time ?? 0;
     if (bounceRef.current) {
-      const t = clock.getElapsedTime() * (kind === 'boulder' ? 4 : 6) + phase.current;
+      const t = gt * (kind === 'boulder' ? 4 : 6);
       const amp = kind === 'boulder' ? 0.18 : 0.45;
       bounceRef.current.position.y = Math.abs(Math.sin(t)) * amp;
       bounceRef.current.rotation.z = Math.sin(t) * 0.08;
@@ -40,9 +43,8 @@ export function Sailor({ carryingRef, stateRef }: SailorProps) {
       const d = stateRef.current;
       const waterY = WATER_BASE_Y + d.waterLevel * WATER_Y_PER_LEVEL;
       const inWater = d.playerPos.y < waterY + 0.05;
-      // No actual mesh change needed beyond a slight wobble
       if (inWater) {
-        bounceRef.current.rotation.z += Math.sin(clock.getElapsedTime() * 8) * 0.03;
+        bounceRef.current.rotation.z += Math.sin(d.time * 8) * 0.03;
       }
     }
   });

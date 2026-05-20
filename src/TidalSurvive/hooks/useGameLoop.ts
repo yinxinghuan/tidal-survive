@@ -98,7 +98,7 @@ export interface GameRef {
   bubbles: Bubble[];
   dustPuffs: DustPuff[];
   puffId: number;
-  walkStrideAccum: number;
+  lastBounceCycle: number;     // hop-phase landing tracker (in units of π)
   pelletId: number;
   ringId: number;
   bubbleId: number;
@@ -172,7 +172,7 @@ export function createGameState(tutorialEnabled = false): GameRef {
     bubbles: [],
     dustPuffs: [],
     puffId: 0,
-    walkStrideAccum: 0,
+    lastBounceCycle: 0,
     pelletId: 1,
     ringId: 1,
     bubbleId: 1,
@@ -322,22 +322,25 @@ function pushPuffs(d: GameRef, x: number, y: number, z: number, heavy: boolean) 
 function pushFootDust(d: GameRef, x: number, y: number, z: number, backX: number, backZ: number) {
   const FOOT = ['#dccaa0', '#cfba8d', '#e8d8b0'];
   const PALE = ['#f6ecd2', '#fbf4dc', '#ffffff'];
-  const n = 1 + ((Math.random() * 2) | 0);  // 1 or 2 — short, single puff per step
+  // One puff per foot-down. 70% chance of a single sand bubble, 30% chance
+  // a tiny pale companion rides alongside. Short-lived so each step reads as
+  // a discrete "pop", not a trail.
+  const n = Math.random() < 0.3 ? 2 : 1;
   for (let i = 0; i < n; i++) {
-    const isPale = Math.random() < 0.45;
-    const spread = 0.10 + Math.random() * 0.18;       // less outward drift
-    const ang = Math.atan2(backZ, backX) + (Math.random() - 0.5) * 0.7;
+    const isPale = i === 1 || Math.random() < 0.3;
+    const spread = 0.06 + Math.random() * 0.10;
+    const ang = Math.atan2(backZ, backX) + (Math.random() - 0.5) * 0.5;
     const vx = Math.cos(ang) * spread;
     const vz = Math.sin(ang) * spread;
     d.dustPuffs.push({
       id: d.puffId++,
-      worldX: x + Math.cos(ang) * 0.06,
-      worldY: y + 0.05,
-      worldZ: z + Math.sin(ang) * 0.06,
-      vx, vy: 0.18 + Math.random() * 0.22, vz,    // gentler lift
+      worldX: x + Math.cos(ang) * 0.04,
+      worldY: y + 0.04,
+      worldZ: z + Math.sin(ang) * 0.04,
+      vx, vy: 0.10 + Math.random() * 0.14, vz,
       startTime: d.time,
-      size: isPale ? 0.10 + Math.random() * 0.08 : 0.14 + Math.random() * 0.10,
-      life: 0.22 + Math.random() * 0.16,           // quick puff, no trail
+      size: isPale ? 0.08 + Math.random() * 0.05 : 0.13 + Math.random() * 0.07,
+      life: 0.20 + Math.random() * 0.10,           // brief, in time with the step
       color: isPale
         ? PALE[(Math.random() * PALE.length) | 0]
         : FOOT[(Math.random() * FOOT.length) | 0],
@@ -594,24 +597,24 @@ export function useGameLoop({
     d.playerPos.y += (standY - d.playerPos.y) * Math.min(1, c * 12);
 
     // ===== FOOTSTEP DUST =====
-    // Every ~0.5m walked on solid ground, kick up 1-2 tiny puffs behind the
-    // player. Suppressed in water, during the start ritual, and on the
-    // game-over frame so we never trail dust through a wave.
+    // Pop a puff on each foot-DOWN of the hop animation (when |sin(t)|
+    // crosses through zero), and only when the player is actually moving
+    // on solid ground. Mirrors Sailor.tsx exactly so the puff lands on the
+    // visual step, not on a distance-based timer.
     {
       const dxStep = d.playerPos.x - prevX;
       const dzStep = d.playerPos.z - prevZ;
       const stepLen = Math.hypot(dxStep, dzStep);
-      if (stepLen > 0.0008 && !inWater && !d.gameOver && d.startRitual === 'done') {
-        d.walkStrideAccum += stepLen;
-        const STRIDE = 0.32;          // emit every ~0.32m of travel — visible cadence while walking
-        if (d.walkStrideAccum >= STRIDE) {
-          d.walkStrideAccum -= STRIDE;
-          // backward kick direction = opposite the movement
-          pushFootDust(d, d.playerPos.x, standY, d.playerPos.z, -dxStep / stepLen, -dzStep / stepLen);
+      const moving = stepLen > 0.0015;          // frame-distance moving threshold
+      const hopSpeed = d.carrying === 'boulder' ? 4 : 6;
+      const bouncePhase = d.time * hopSpeed;
+      const cycle = Math.floor(bouncePhase / Math.PI);
+      if (cycle > d.lastBounceCycle) {
+        if (moving && !inWater && !d.gameOver && d.startRitual === 'done') {
+          const k = 1 / stepLen;
+          pushFootDust(d, d.playerPos.x, standY, d.playerPos.z, -dxStep * k, -dzStep * k);
         }
-      } else if (stepLen <= 0.0008) {
-        // standing still — bleed accumulator so the next step doesn't insta-emit
-        d.walkStrideAccum = Math.max(0, d.walkStrideAccum - c * 0.4);
+        d.lastBounceCycle = cycle;
       }
     }
 
