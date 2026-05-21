@@ -49,8 +49,8 @@ export function TidalSurvive() {
   const { stickRef, view } = useJoystick(phase === 'playing', onTapToDrop);
 
   const {
-    isInAigram, submitScore, fetchGlobalLeaderboard, fetchFriendsLeaderboard,
-  } = useGameScore('tidal-survive');
+    isInAigram, submitScore, fetchLeaderboard,
+  } = useGameScore();
 
   const haptic = useCallback((kind: 'light' | 'heavy') => {
     if (!('vibrate' in navigator)) return;
@@ -277,8 +277,7 @@ export function TidalSurvive() {
           gameName={t('title')}
           isInAigram={isInAigram}
           onClose={() => setShowLeaderboard(false)}
-          fetchGlobal={fetchGlobalLeaderboard}
-          fetchFriends={fetchFriendsLeaderboard}
+          fetch={fetchLeaderboard}
         />
       )}
     </div>
