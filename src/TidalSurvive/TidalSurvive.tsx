@@ -21,7 +21,7 @@ const TUTORIAL_KEY = 'tidal_survive_tutorial_seen';
 export function TidalSurvive() {
   const [phase, setPhase] = useState<Phase>('splash');
   const [score, setScore] = useState(0);
-  const [highScore, setHighScore] = useState<number>(() => Number(localStorage.getItem(HIGH_KEY) || 0));
+  const [highScore, setHighScore] = useState<number>(() => Number(alteruLocalStorage.getItem(HIGH_KEY) || 0));
   const [finalScore, setFinalScore] = useState(0);
   const [gameOverReason, setGameOverReason] = useState<'drowned' | 'shark'>('drowned');
   const [showLeaderboard, setShowLeaderboard] = useState(false);
@@ -75,7 +75,7 @@ export function TidalSurvive() {
     setPhase('gameover');
     stopBgm();
     if (final > highScore) {
-      localStorage.setItem(HIGH_KEY, String(final));
+      alteruLocalStorage.setItem(HIGH_KEY, String(final));
       setHighScore(final);
     }
     submitScore(final).catch(() => { /* silent */ });
@@ -83,7 +83,7 @@ export function TidalSurvive() {
 
   const start = useCallback(async () => {
     await unlockAudio();
-    const showTutorial = !localStorage.getItem(TUTORIAL_KEY);
+    const showTutorial = !alteruLocalStorage.getItem(TUTORIAL_KEY);
     stateRef.current = createGameState(showTutorial);
     stateRef.current.startRitualSince = 0;
     setScore(0);
@@ -117,8 +117,8 @@ export function TidalSurvive() {
       setStartRitual(d.startRitual);
       setTutorialStep(d.tutorialStep);
       // First-play: persist tutorial-seen flag once they reach 'done'
-      if (d.tutorialStep === 'done' && !localStorage.getItem(TUTORIAL_KEY)) {
-        localStorage.setItem(TUTORIAL_KEY, '1');
+      if (d.tutorialStep === 'done' && !alteruLocalStorage.getItem(TUTORIAL_KEY)) {
+        alteruLocalStorage.setItem(TUTORIAL_KEY, '1');
       }
       // Carry-time hint: after tutorial is done, prompt "tap to drop" whenever
       // the player has been holding an item for >1.2s. Disappears the instant
